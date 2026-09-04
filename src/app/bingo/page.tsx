@@ -1,13 +1,36 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { BingoLocalGame } from '@/games/bingo/components/BingoLocalGame'
-import { ArrowLeft, Users, Play, Globe } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { BingoOnlineGame } from '@/games/bingo/components/BingoOnlineGame'
+import { ArrowLeft, Play, Globe, Loader2 } from 'lucide-react'
 
-export default function BingoPage() {
-  const [mode, setMode] = useState<'hub' | 'local'>('hub')
+function BingoContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const matchParam = searchParams.get('match')
+  const actionParam = searchParams.get('action')
+
+  const [mode, setMode] = useState<'hub' | 'local' | 'online-host' | 'online-guest'>(() => {
+    if (matchParam) return 'online-guest'
+    if (actionParam === 'create') return 'online-host'
+    return 'hub'
+  })
+
+  useEffect(() => {
+    if (matchParam) {
+      setMode('online-guest')
+    } else if (actionParam === 'create') {
+      setMode('online-host')
+    }
+  }, [matchParam, actionParam])
+
+  const handleExitToHub = () => {
+    setMode('hub')
+    router.replace('/bingo')
+  }
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto w-full py-4">
@@ -20,10 +43,10 @@ export default function BingoPage() {
           <ArrowLeft className="w-4 h-4" />
           <span>All Games</span>
         </Link>
-        {mode === 'local' && (
+        {mode !== 'hub' && (
           <button
             type="button"
-            onClick={() => setMode('hub')}
+            onClick={handleExitToHub}
             className="text-xs text-slate-400 hover:text-slate-200 underline font-medium"
           >
             Change Mode
@@ -31,7 +54,7 @@ export default function BingoPage() {
         )}
       </div>
 
-      {mode === 'hub' ? (
+      {mode === 'hub' && (
         <div className="space-y-8 max-w-2xl mx-auto text-center py-6">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-950 text-amber-400 border border-amber-800">
@@ -75,12 +98,13 @@ export default function BingoPage() {
                   Create a Match, send an invite link to your friend, and connect browser-to-browser.
                 </p>
               </div>
-              <Link
-                href="/bingo/match-preview"
+              <button
+                type="button"
+                onClick={() => setMode('online-host')}
                 className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm text-center block shadow-md transition-all active:scale-95"
               >
                 Create Online Match
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -96,9 +120,31 @@ export default function BingoPage() {
             </ul>
           </div>
         </div>
-      ) : (
-        <BingoLocalGame />
+      )}
+
+      {mode === 'local' && <BingoLocalGame />}
+
+      {mode === 'online-host' && (
+        <BingoOnlineGame role="host" onExit={handleExitToHub} />
+      )}
+
+      {mode === 'online-guest' && matchParam && (
+        <BingoOnlineGame role="guest" matchId={matchParam} onExit={handleExitToHub} />
       )}
     </div>
+  )
+}
+
+export default function BingoPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+        </div>
+      }
+    >
+      <BingoContent />
+    </Suspense>
   )
 }

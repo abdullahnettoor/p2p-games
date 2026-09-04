@@ -4,13 +4,13 @@
 
 **Blocked by:** 01: Platform Foundation & Local Playable BINGO Engine
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Abstracted Transport interface supporting connection lifecycle, typed signaling messages (Ready, Move, Reaction, Rematch, Heartbeat), and disconnection events.
-- [ ] PeerJS WebRTC DataChannel implementation with public STUN configuration for zero-cost direct browser-to-browser connection.
-- [ ] Virtual loopback Transport adapter for deterministic automated multi-client testing.
-- [ ] Landing page UI with one-click "Create BINGO Match" action generating a shareable invite URL.
-- [ ] Guest join flow handling invite URLs and connecting directly to the Host.
-- [ ] Interactive pre-game Lobby displaying connection status, customizable Player names, and board setup.
-- [ ] Dual-sided Ready toggle ensuring Match only starts when both Host and Guest are ready with valid boards.
-- [ ] Automated integration tests for Host/Guest connection establishment and synchronized Lobby state transitions.
+- [x] Abstracted Transport interface supporting connection lifecycle, typed signaling messages (Ready, Move, Reaction, Rematch, Heartbeat), and disconnection events.
+- [x] PeerJS WebRTC DataChannel implementation with public STUN configuration for zero-cost direct browser-to-browser connection.
+- [x] Virtual loopback Transport adapter for deterministic automated multi-client testing.
+- [x] Landing page UI with one-click "Create BINGO Match" action generating a shareable invite URL.
+- [x] Guest join flow handling invite URLs and connecting directly to the Host.
+- [x] Interactive pre-game Lobby displaying connection status, customizable Player names, and board setup.
+- [x] Dual-sided Ready toggle ensuring Match only starts when both Host and Guest are ready with valid boards.
+- [x] Automated integration tests for Host/Guest connection establishment and synchronized Lobby state transitions.

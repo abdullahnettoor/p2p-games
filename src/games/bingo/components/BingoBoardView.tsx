@@ -5,20 +5,22 @@ import { cn } from '@/lib/utils'
 
 interface BingoBoardViewProps {
   board: BingoBoard
-  calledNumbers: number[]
-  lineDetails: LineDetails
-  isMyTurn: boolean
-  onPickNumber: (num: number) => void
+  calledNumbers?: number[]
+  lineDetails?: LineDetails
+  isMyTurn?: boolean
+  onPickNumber?: (num: number) => void
   disabled?: boolean
   className?: string
 }
 
+const DEFAULT_LINE_DETAILS: LineDetails = { count: 0, rows: [], cols: [], diags: [] }
+
 export const BingoBoardView: React.FC<BingoBoardViewProps> = ({
   board,
-  calledNumbers,
-  lineDetails,
-  isMyTurn,
-  onPickNumber,
+  calledNumbers = [],
+  lineDetails = DEFAULT_LINE_DETAILS,
+  isMyTurn = false,
+  onPickNumber = () => {},
   disabled = false,
   className,
 }) => {

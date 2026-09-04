@@ -81,7 +81,23 @@ export default function CatalogPage() {
               <p className="text-slate-400 text-sm leading-relaxed">{game.description}</p>
             </div>
 
-            {game.href !== '#' ? (
+            {game.id === 'bingo' ? (
+              <div className="space-y-2">
+                <Link
+                  href="/bingo?action=create"
+                  className="w-full py-3 px-4 rounded-xl font-bold text-center block transition-all active:scale-95 shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>Create BINGO Match</span>
+                </Link>
+                <Link
+                  href="/bingo"
+                  className="w-full py-2 px-4 rounded-xl font-semibold text-center block transition-all bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs border border-slate-800"
+                >
+                  Pass &amp; Play / Hub
+                </Link>
+              </div>
+            ) : game.href !== '#' ? (
               <Link
                 href={game.href}
                 className={`w-full py-3 px-4 rounded-xl font-bold text-center block transition-all active:scale-95 shadow-lg ${game.btnColor}`}
