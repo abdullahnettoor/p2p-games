@@ -89,6 +89,14 @@ describe('BINGO Dual-Player Full Matchplay Integration Test', () => {
     expect(hostMatch.state.gameState.status).toBe('active')
     expect(guestMatch.state.gameState.status).toBe('active')
 
+    // Verify transient emoji reactions exchange over Transport
+    const receivedByGuest: string[] = []
+    guestMatch.onReaction((rx) => {
+      receivedByGuest.push(rx.emoji)
+    })
+    hostMatch.sendReaction('🎉')
+    expect(receivedByGuest).toContain('🎉')
+
     // Host calls numbers to form 5 lines:
     // Rows 0, 1, 2 = numbers 1 to 15
     // Plus 16, 21 (completes Col 0)

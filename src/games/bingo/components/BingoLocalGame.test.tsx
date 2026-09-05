@@ -20,5 +20,11 @@ describe('BingoLocalGame Component', () => {
     // Active Match view
     expect(screen.getByText(/Current Turn/i)).toBeInTheDocument()
     expect(screen.getByText(/Called Numbers/i)).toBeInTheDocument()
+
+    // Sound toggle is available in active match view
+    const soundToggle = screen.getByRole('button', { name: /mute sound effects/i })
+    expect(soundToggle).toBeInTheDocument()
+    fireEvent.click(soundToggle)
+    expect(screen.getByRole('button', { name: /unmute sound effects/i })).toBeInTheDocument()
   })
 })

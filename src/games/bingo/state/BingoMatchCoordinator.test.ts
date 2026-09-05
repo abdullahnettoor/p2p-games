@@ -157,4 +157,37 @@ describe('BingoMatchCoordinator', () => {
     expect(hostCoordinator.winResult.isGameOver).toBe(true)
     expect(guestCoordinator.winResult.isGameOver).toBe(true)
   })
+
+  it('broadcasts reactions across transport and invokes reaction listeners', () => {
+    const { hostCoordinator, guestCoordinator } = setupCoordinators()
+
+    const hostReactions: any[] = []
+    const guestReactions: any[] = []
+
+    const unsubHost = hostCoordinator.onReaction((r) => hostReactions.push(r))
+    const unsubGuest = guestCoordinator.onReaction((r) => guestReactions.push(r))
+
+    // Host sends a reaction
+    hostCoordinator.sendReaction('🔥')
+
+    expect(hostReactions.length).toBe(1)
+    expect(hostReactions[0].emoji).toBe('🔥')
+    expect(hostReactions[0].isLocal).toBe(true)
+
+    expect(guestReactions.length).toBe(1)
+    expect(guestReactions[0].emoji).toBe('🔥')
+    expect(guestReactions[0].isLocal).toBe(false)
+    expect(guestReactions[0].senderName).toBe('HostAlice')
+
+    // Guest sends a reaction back
+    guestCoordinator.sendReaction('👏')
+
+    expect(hostReactions.length).toBe(2)
+    expect(hostReactions[1].emoji).toBe('👏')
+    expect(hostReactions[1].isLocal).toBe(false)
+    expect(hostReactions[1].senderName).toBe('GuestBob')
+
+    unsubHost()
+    unsubGuest()
+  })
 })

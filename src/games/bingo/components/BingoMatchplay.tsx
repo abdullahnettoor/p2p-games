@@ -3,9 +3,13 @@
 import React from 'react'
 import { BingoMatchCoordinator } from '../state/BingoMatchCoordinator'
 import { useBingoMatch } from '../state/useBingoMatch'
+import { useBingoAudio } from '../hooks/useBingoAudio'
 import { BingoBoardView } from './BingoBoardView'
 import { BingoLetterTracker } from './BingoLetterTracker'
 import { BingoTurnTimer } from './BingoTurnTimer'
+import { BingoSoundToggle } from './BingoSoundToggle'
+import { BingoReactionBar } from './BingoReactionBar'
+import { BingoReactionOverlay } from './BingoReactionOverlay'
 import { BingoGameOverModal } from './BingoGameOverModal'
 import { ArrowLeft, User, Sparkles, Hash } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -22,6 +26,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
   className,
 }) => {
   const { state, isMyTurn, submitMove } = useBingoMatch(coordinator)
+  const { isMuted, toggleMute } = useBingoAudio(state)
 
   const localPlayer = state.localPlayer
   const remotePlayer = state.remotePlayer
@@ -36,7 +41,10 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
   const lastCalledNumber = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null
 
   return (
-    <div className={cn('space-y-6 max-w-4xl mx-auto w-full py-2', className)}>
+    <div className={cn('space-y-6 max-w-4xl mx-auto w-full py-2 relative', className)}>
+      {/* Ephemeral Reaction Overlay */}
+      <BingoReactionOverlay coordinator={coordinator} />
+
       {/* Top Header Bar */}
       <div className="flex items-center justify-between gap-4">
         <button
@@ -48,10 +56,13 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           <span>Exit Match</span>
         </button>
 
-        <BingoTurnTimer
-          secondsRemaining={state.turnSecondsRemaining}
-          isMyTurn={isMyTurn}
-        />
+        <div className="flex items-center gap-2.5">
+          <BingoSoundToggle isMuted={isMuted} onToggle={toggleMute} />
+          <BingoTurnTimer
+            secondsRemaining={state.turnSecondsRemaining}
+            isMyTurn={isMyTurn}
+          />
+        </div>
       </div>
 
       {/* Turn Indicator & Score Bar */}
@@ -131,7 +142,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
         </div>
       </div>
 
-      {/* Turn Action Banner */}
+      {/* Active Turn Banner */}
       <div
         className={cn(
           'p-4 rounded-2xl border text-center transition-all duration-300 flex items-center justify-center gap-2',
@@ -165,6 +176,14 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           isMyTurn={isMyTurn}
           onPickNumber={(num) => submitMove(num)}
           disabled={!isMyTurn || isGameOver}
+        />
+      </div>
+
+      {/* Floating Emoji Reaction Bar */}
+      <div className="flex justify-center">
+        <BingoReactionBar
+          onSendReaction={(emoji) => coordinator.sendReaction(emoji)}
+          disabled={isGameOver}
         />
       </div>
 

@@ -6,6 +6,8 @@ import { bingoGameDefinition } from '../engine'
 import { BingoBoardSetup } from './BingoBoardSetup'
 import { BingoBoardView } from './BingoBoardView'
 import { BingoLetterTracker } from './BingoLetterTracker'
+import { BingoSoundToggle } from './BingoSoundToggle'
+import { defaultSoundSynthesizer } from '@/core/audio/SoundSynthesizer'
 import { Trophy, RefreshCw, UserCheck, Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +17,7 @@ export const BingoLocalGame: React.FC = () => {
   const [p2Board, setP2Board] = useState<BingoBoard | null>(null)
   const [gameState, setGameState] = useState<BingoState | null>(null)
   const [showOpponentBoard, setShowOpponentBoard] = useState<boolean>(false)
+  const [isMuted, setIsMuted] = useState<boolean>(() => defaultSoundSynthesizer.isMuted)
 
   const handleP1Complete = (board: BingoBoard) => {
     setP1Board(board)
@@ -60,7 +63,16 @@ export const BingoLocalGame: React.FC = () => {
     setGameState(nextState)
 
     if (nextState.status === 'completed') {
+      defaultSoundSynthesizer.playVictory()
       setStage('completed')
+    } else {
+      const prevTotalLines = (gameState.completedLines.p1 || 0) + (gameState.completedLines.p2 || 0)
+      const nextTotalLines = (nextState.completedLines.p1 || 0) + (nextState.completedLines.p2 || 0)
+      if (nextTotalLines > prevTotalLines) {
+        defaultSoundSynthesizer.playLineComplete()
+      } else {
+        defaultSoundSynthesizer.playNumberSelect()
+      }
     }
   }
 
@@ -135,6 +147,10 @@ export const BingoLocalGame: React.FC = () => {
             <div className="text-xs font-bold text-rose-400 mb-1">Player 2</div>
             <BingoLetterTracker completedLines={gameState.completedLines.p2} />
           </div>
+          <BingoSoundToggle
+            isMuted={isMuted}
+            onToggle={() => setIsMuted(defaultSoundSynthesizer.toggleMute())}
+          />
         </div>
       </div>
 

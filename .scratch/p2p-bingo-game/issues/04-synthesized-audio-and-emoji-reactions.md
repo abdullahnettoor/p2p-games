@@ -4,11 +4,11 @@
 
 **Blocked by:** 03: Real-Time P2P BINGO Matchplay & Turn Timer
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Zero-asset sound engine using Web Audio API oscillators (beeps, line completion chords, game-over fanfares).
-- [ ] Sound toggle button allowing Players to mute/unmute audio effects.
-- [ ] Audio triggers on number selection, turn change, line completion, and match conclusion.
-- [ ] In-game floating emoji reaction bar (e.g., 👋, 😂, 😱, 🔥, 👏).
-- [ ] Reactions broadcast across the Transport and rendered as ephemeral floating CSS animations on the opponent's screen with auto-cleanup.
-- [ ] Visual and behavioral tests verifying reaction dispatching and sound trigger events.
+- [x] Zero-asset sound engine using Web Audio API oscillators (beeps, line completion chords, game-over fanfares).
+- [x] Sound toggle button allowing Players to mute/unmute audio effects.
+- [x] Audio triggers on number selection, turn change, line completion, and match conclusion.
+- [x] In-game floating emoji reaction bar (e.g., 👋, 😂, 😱, 🔥, 👏).
+- [x] Reactions broadcast across the Transport and rendered as ephemeral floating CSS animations on the opponent's screen with auto-cleanup.
+- [x] Visual and behavioral tests verifying reaction dispatching and sound trigger events.

@@ -97,7 +97,42 @@ describe('BingoMatchplay', () => {
     })
 
     expect(hostCoordinator.state.gameState.status).toBe('completed')
-    expect(screen.getByText(/(VICTORY!|IT'S A DRAW!)/i)).toBeInTheDocument()
+    expect(screen.getByText(/(VICTORY|DEFEAT|IT'S A DRAW!)/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /exit to games hub/i })).toBeInTheDocument()
+  })
+
+  it('renders sound toggle button and toggles mute state', () => {
+    const { hostCoordinator } = createTestCoordinators()
+    render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
+
+    const soundBtn = screen.getByRole('button', { name: /mute sound effects/i })
+    expect(soundBtn).toBeInTheDocument()
+
+    fireEvent.click(soundBtn)
+    expect(screen.getByRole('button', { name: /unmute sound effects/i })).toBeInTheDocument()
+  })
+
+  it('renders emoji reaction bar and dispatches floating reaction on click', () => {
+    const { hostCoordinator, guestCoordinator } = createTestCoordinators()
+    render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
+
+    const reactionBtn = screen.getByRole('button', { name: /Reaction 🔥/i })
+    expect(reactionBtn).toBeInTheDocument()
+
+    act(() => {
+      fireEvent.click(reactionBtn)
+    })
+
+    // Both local screen and remote coordinator receive reaction
+    expect(screen.getAllByText('🔥').length).toBe(2)
+    expect(screen.getByText('You')).toBeInTheDocument()
+
+    // Remote coordinator sends reaction back
+    act(() => {
+      guestCoordinator.sendReaction('👋')
+    })
+
+    expect(screen.getAllByText('👋').length).toBe(2)
+    expect(screen.getByText('Bob')).toBeInTheDocument()
   })
 })

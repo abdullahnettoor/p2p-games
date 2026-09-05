@@ -10,6 +10,15 @@ export interface PlayerSummary {
   role: 'host' | 'guest'
 }
 
+export interface BingoReaction {
+  id: string
+  emoji: string
+  senderId: string
+  senderName: string
+  isLocal: boolean
+  timestamp: number
+}
+
 export interface BingoMatchCoordinatorOptions {
   transport: ITransport
   localPlayer: PlayerSummary
@@ -37,6 +46,7 @@ export class BingoMatchCoordinator {
 
   private timerInterval: ReturnType<typeof setInterval> | null = null
   private listeners = new Set<() => void>()
+  private reactionListeners = new Set<(reaction: BingoReaction) => void>()
   private unsubscribers: Array<() => void> = []
 
   constructor(options: BingoMatchCoordinatorOptions) {
@@ -81,8 +91,46 @@ export class BingoMatchCoordinator {
     return () => this.listeners.delete(listener)
   }
 
+  public onReaction(listener: (reaction: BingoReaction) => void): () => void {
+    this.reactionListeners.add(listener)
+    return () => this.reactionListeners.delete(listener)
+  }
+
   private notify(): void {
     this.listeners.forEach((listener) => listener())
+  }
+
+  private notifyReaction(reaction: BingoReaction): void {
+    this.reactionListeners.forEach((listener) => listener(reaction))
+  }
+
+  private generateReactionId(timestamp: number): string {
+    return `rx_${timestamp}_${Math.random().toString(36).substring(2, 7)}`
+  }
+
+  public sendReaction(emoji: string): void {
+    const timestamp = Date.now()
+    const reaction: BingoReaction = {
+      id: this.generateReactionId(timestamp),
+      emoji,
+      senderId: this.state.localPlayer.id,
+      senderName: this.state.localPlayer.name,
+      isLocal: true,
+      timestamp,
+    }
+
+    // Broadcast reaction across Transport
+    this.transport.send({
+      type: 'reaction',
+      payload: {
+        emoji,
+        playerId: this.state.localPlayer.id,
+        timestamp,
+      },
+    })
+
+    // Emit local reaction event
+    this.notifyReaction(reaction)
   }
 
   private bindTransport(): void {
@@ -102,6 +150,17 @@ export class BingoMatchCoordinator {
         }
 
         this.processMove(move, false)
+      } else if (message.type === 'reaction') {
+        const payload = message.payload
+        const reaction: BingoReaction = {
+          id: this.generateReactionId(payload.timestamp),
+          emoji: payload.emoji,
+          senderId: payload.playerId,
+          senderName: this.state.remotePlayer.name,
+          isLocal: false,
+          timestamp: payload.timestamp,
+        }
+        this.notifyReaction(reaction)
       }
     })
 
@@ -228,5 +287,6 @@ export class BingoMatchCoordinator {
     this.unsubscribers.forEach((unsub) => unsub())
     this.unsubscribers = []
     this.listeners.clear()
+    this.reactionListeners.clear()
   }
 }
