@@ -1,11 +1,12 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { BingoMatchCoordinator, PlayerSummary } from '../state/BingoMatchCoordinator'
 import { useBingoMatch } from '../state/useBingoMatch'
 import { useBingoAudio } from '../hooks/useBingoAudio'
 import { useBingoTurnAttention } from '../hooks/useBingoTurnAttention'
+import { useBingoMatchAnnouncements } from '../hooks/useBingoMatchAnnouncements'
 import { getCalls } from '../engine'
 import { BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
 import { BingoBoardView } from './BingoBoardView'
@@ -66,6 +67,8 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
 }) => {
   const { state, isMyTurn, submitMove, passTurn } = useBingoMatch(coordinator)
   const { isMuted, toggleMute } = useBingoAudio(state)
+  const announcement = useBingoMatchAnnouncements(state)
+  const [isPassConfirming, setIsPassConfirming] = useState(false)
 
   const localPlayer = state.localPlayer
   const remotePlayer = state.remotePlayer
@@ -92,6 +95,15 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
     localPlayerId: localPlayer.id,
     secondsRemaining: state.turnSecondsRemaining,
   })
+
+  useEffect(() => {
+    if (!isMyTurn || isGameOver || state.isReconnecting) setIsPassConfirming(false)
+  }, [isGameOver, isMyTurn, state.isReconnecting])
+
+  const confirmPass = () => {
+    passTurn()
+    setIsPassConfirming(false)
+  }
 
   return (
     <div className={cn(styles.tokenScope, styles.matchSurface, className)}>
@@ -149,15 +161,35 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           <div className={styles.turnActions}>
             {isMyTurn ? (
               <div className={styles.passGroup}>
-                <button
-                  type="button"
-                  onClick={passTurn}
-                  disabled={isGameOver || state.isReconnecting}
-                  className={styles.passButton}
-                >
-                  Pass turn
-                </button>
-                <span className={styles.passHint}>Ends your turn</span>
+                {!isPassConfirming ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsPassConfirming(true)}
+                      disabled={isGameOver || state.isReconnecting}
+                      className={styles.passButton}
+                    >
+                      Pass turn
+                    </button>
+                    <span className={styles.passHint}>Ends your turn</span>
+                  </>
+                ) : (
+                  <div className={styles.passConfirmation} role="group" aria-label="Confirm passing your turn">
+                    <p>Passing ends your turn. {remotePlayer.name} is next.</p>
+                    <div className={styles.passConfirmationActions}>
+                      <button type="button" onClick={confirmPass} className={styles.passConfirmButton}>
+                        Pass and end turn
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsPassConfirming(false)}
+                        className={styles.passCancelButton}
+                      >
+                        Keep turn
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : null}
             <BingoTurnTimer
@@ -166,6 +198,12 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
             />
           </div>
         </section>
+
+        {announcement ? (
+          <p className={styles.srOnly} role="status" aria-live="polite" aria-atomic="true">
+            {announcement}
+          </p>
+        ) : null}
 
         <div className={styles.callSlipSlot}>
           {latestCall && latestCaller ? (
@@ -250,6 +288,13 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           localCompletedLines={myLines}
           remoteCompletedLines={remoteLines}
           totalCalledCount={calls.length}
+          localBoard={myBoard}
+          remoteBoard={state.gameState.boards[remotePlayer.id] || []}
+          calls={calls}
+          playersById={playersById}
+          localLineDetails={myLineDetails}
+          remoteLineDetails={state.gameState.lineDetails[remotePlayer.id]}
+          history={state.gameState.history}
           rematchState={state.rematchState}
           onRequestRematch={() => coordinator.requestRematch()}
           onAcceptRematch={() => coordinator.acceptRematch()}

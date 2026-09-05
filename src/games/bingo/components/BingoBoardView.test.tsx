@@ -33,6 +33,24 @@ describe('BingoBoardView Component', () => {
     }
   })
 
+  it('exposes grid, cell, caller, and called semantics', () => {
+    render(
+      <BingoBoardView
+        board={sampleBoard}
+        calls={calls}
+        playersById={playersById}
+        lineDetails={{ count: 1, rows: [0], cols: [], diags: [] }}
+      />
+    )
+
+    const grid = screen.getByRole('grid', { name: 'Bingo board' })
+    expect(grid).toHaveAttribute('aria-rowcount', '5')
+    expect(grid).toHaveAttribute('aria-colcount', '5')
+    expect(screen.getAllByRole('gridcell')).toHaveLength(25)
+    expect(screen.getAllByRole('gridcell', { name: /called by Alice/ })).toHaveLength(2)
+    expect(screen.getByText(/Completed lines: row 1/)).toBeInTheDocument()
+  })
+
   it('names caller ownership and allows picking only uncalled numbers during the Player turn', () => {
     const handlePickNumber = vi.fn()
     render(

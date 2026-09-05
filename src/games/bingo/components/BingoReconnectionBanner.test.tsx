@@ -25,8 +25,9 @@ describe('BingoReconnectionBanner', () => {
     )
 
     expect(screen.getByRole('alert')).toBeDefined()
-    expect(screen.getByText('Opponent Disconnected')).toBeDefined()
-    expect(screen.getByText('Bob')).toBeDefined()
-    expect(screen.getByText('Forfeit win in 18s')).toBeDefined()
+    expect(screen.getByText('Connection interrupted')).toBeDefined()
+    expect(screen.getByText(/Bob is disconnected/)).toBeDefined()
+    expect(screen.getByText('18s grace')).toBeDefined()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '18')
   })
 })

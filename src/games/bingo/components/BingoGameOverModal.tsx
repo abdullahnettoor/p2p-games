@@ -1,11 +1,15 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Award, Check, Frown, Hash, Loader2, RotateCcw, Trophy, X } from 'lucide-react'
 import { WinResult } from '@/core/games/types'
-import { PlayerSummary } from '../state/BingoMatchCoordinator'
-import { Trophy, Award, Frown, ArrowLeft, Hash, RotateCcw, Check, X, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { RematchState } from '../state/BingoMatchCoordinator'
+import { BingoBoard, BingoCall, BingoTurnEvent, LineDetails } from '../types'
+import { BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
+import { PlayerSummary, RematchState } from '../state/BingoMatchCoordinator'
+import { BingoBoardView } from './BingoBoardView'
+import { BingoMatchNotes } from './BingoMatchNotes'
+import styles from './BingoScorecard.module.css'
 
 export interface BingoGameOverModalProps {
   winResult: WinResult
@@ -14,12 +18,51 @@ export interface BingoGameOverModalProps {
   localCompletedLines: number
   remoteCompletedLines: number
   totalCalledCount: number
+  localBoard?: BingoBoard
+  remoteBoard?: BingoBoard
+  calls?: BingoCall[]
+  playersById?: Record<string, BingoPlayerInk>
+  localLineDetails?: LineDetails
+  remoteLineDetails?: LineDetails
+  history?: BingoTurnEvent[]
   rematchState?: RematchState
   onRequestRematch?: () => void
   onAcceptRematch?: () => void
   onDeclineRematch?: () => void
   onExit: () => void
   className?: string
+}
+
+function resultTitle(winResult: WinResult, isWinner: boolean, isDraw: boolean): string {
+  if (isDraw) return "IT'S A DRAW!"
+  if (winResult.reason === 'forfeit') return isWinner ? 'VICTORY BY FORFEIT' : 'DEFEAT BY FORFEIT'
+  return isWinner ? 'VICTORY' : 'DEFEAT'
+}
+
+function resultDescription(
+  winResult: WinResult,
+  isWinner: boolean,
+  isDraw: boolean,
+  remotePlayerName: string
+): string {
+  if (isDraw) return 'Both players completed 5 lines on the same turn.'
+  if (winResult.reason === 'forfeit') {
+    return isWinner
+      ? `${remotePlayerName} disconnected and did not return within 30 seconds.`
+      : 'You forfeited the match when your connection did not return within 30 seconds.'
+  }
+  return isWinner ? 'You scored B-I-N-G-O first.' : `${remotePlayerName} scored B-I-N-G-O first.`
+}
+
+function playerResultLabel(
+  playerId: string,
+  winnerId: string | null,
+  isDraw: boolean,
+  reason?: string
+): string {
+  if (isDraw) return 'DRAW'
+  if (playerId === winnerId) return 'WINNER'
+  return reason === 'forfeit' ? 'FORFEIT' : 'LOSS'
 }
 
 export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
@@ -29,6 +72,13 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
   localCompletedLines,
   remoteCompletedLines,
   totalCalledCount,
+  localBoard,
+  remoteBoard,
+  calls,
+  playersById,
+  localLineDetails,
+  remoteLineDetails,
+  history,
   rematchState = 'none',
   onRequestRematch,
   onAcceptRematch,
@@ -36,211 +86,214 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
   onExit,
   className,
 }) => {
+  const [showComparison, setShowComparison] = useState(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const onExitRef = useRef(onExit)
+  onExitRef.current = onExit
+
   const isWinner = winResult.winnerId === localPlayer.id
-  const isLoser = winResult.winnerId === remotePlayer.id
-  const isDraw = winResult.isDraw
-  const isForfeit = winResult.reason === 'forfeit'
+  const isDraw = Boolean(winResult.isDraw)
+  const canCompare = Boolean(
+    localBoard &&
+      remoteBoard &&
+      calls &&
+      playersById &&
+      localLineDetails &&
+      remoteLineDetails
+  )
+  const localInk = getBingoInkPresentation(localPlayer.role)
+  const remoteInk = getBingoInkPresentation(remotePlayer.role)
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const getFocusableElements = () =>
+      Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      )
+
+    const focusableElements = getFocusableElements()
+    focusableElements[0]?.focus()
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onExitRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const currentFocusableElements = getFocusableElements()
+      if (currentFocusableElements.length === 0) return
+      const first = currentFocusableElements[0]
+      const last = currentFocusableElements[currentFocusableElements.length - 1]
+      if (!dialog.contains(document.activeElement)) {
+        event.preventDefault()
+        first.focus()
+        return
+      }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      if (previouslyFocused?.isConnected) previouslyFocused.focus()
+    }
+  }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300 motion-reduce:animate-none">
+    <div className={styles.resultBackdrop}>
       <div
-        className={cn(
-          'max-w-md w-full rounded-3xl p-6 md:p-8 border text-center space-y-6 shadow-2xl relative overflow-hidden bg-gradient-to-b',
-          isWinner
-            ? 'from-amber-950/50 via-slate-900 to-slate-950 border-amber-500/40 shadow-amber-500/10'
-            : isDraw
-            ? 'from-indigo-950/50 via-slate-900 to-slate-950 border-indigo-500/40'
-            : 'from-slate-900 to-slate-950 border-slate-800',
-          className
-        )}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bingo-result-title"
+        aria-describedby="bingo-result-description"
+        className={cn(styles.resultDialog, className)}
       >
-        {/* Glow effect */}
-        {isWinner && (
-          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
-        )}
-
-        {/* Big Icon */}
-        <div className="mx-auto flex items-center justify-center">
-          {isWinner ? (
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-xl shadow-amber-500/20 scale-105">
-              <Trophy className="w-10 h-10" />
-            </div>
-          ) : isDraw ? (
-            <div className="w-20 h-20 rounded-3xl bg-indigo-600 flex items-center justify-center text-white shadow-xl shadow-indigo-600/30">
-              <Award className="w-10 h-10" />
-            </div>
-          ) : (
-            <div className="w-20 h-20 rounded-3xl bg-slate-800 flex items-center justify-center text-slate-400 border border-slate-700">
-              <Frown className="w-10 h-10" />
-            </div>
-          )}
-        </div>
-
-        {/* Title & Subtitle */}
-        <div className="space-y-1.5">
-          <h2 className="text-3xl font-black tracking-tight text-white">
-            {isWinner
-              ? isForfeit
-                ? 'VICTORY BY FORFEIT'
-                : 'VICTORY (WINNER)'
-              : isDraw
-              ? "IT'S A DRAW!"
-              : 'DEFEAT (LOSER)'}
+        <header className={styles.resultHeader}>
+          <p className={styles.resultKicker}>Final match result</p>
+          <h1 className={styles.resultMasthead}>BINGO</h1>
+          <div className={cn(styles.resultBadge, styles.playerInk)} data-result={isDraw ? 'draw' : isWinner ? 'win' : 'loss'}>
+            {isWinner ? <Trophy aria-hidden="true" /> : isDraw ? <Award aria-hidden="true" /> : <Frown aria-hidden="true" />}
+          </div>
+          <h2 id="bingo-result-title" className={styles.resultTitle} aria-live="assertive">
+            {resultTitle(winResult, isWinner, isDraw)}
           </h2>
-          <p className="text-sm text-slate-400">
-            {isWinner
-              ? isForfeit
-                ? `${remotePlayer.name} disconnected and did not return within 30 seconds.`
-                : 'Congratulations! You scored B-I-N-G-O first!'
-              : isDraw
-              ? 'Both players completed 5 lines on the same turn!'
-              : `${remotePlayer.name} completed 5 lines first.`}
+          <p id="bingo-result-description" className={styles.resultDescription}>
+            {resultDescription(winResult, isWinner, isDraw, remotePlayer.name)}
           </p>
-        </div>
+        </header>
 
-        {/* Match Statistics Card */}
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 text-left">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 pb-1 border-b border-slate-800">
-            Final Match Summary
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-center pt-1">
-            <div
-              className={cn(
-                'p-2.5 rounded-xl border flex flex-col justify-between',
-                isWinner
-                  ? 'bg-amber-950/30 border-amber-500/40'
-                  : 'bg-slate-950/60 border-slate-800/80'
-              )}
-            >
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <span className="text-[10px] uppercase tracking-wider text-indigo-400 font-semibold truncate">
-                  {localPlayer.name} (You)
-                </span>
-                {isWinner && (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
-                    WINNER
-                  </span>
-                )}
-                {isLoser && (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-medium">
-                    LOSER
-                  </span>
-                )}
+        <section className={styles.resultSummary} aria-label="Final Match Summary">
+          <div className={styles.resultSummaryLabel}>Final Match Summary</div>
+          <div className={styles.resultScoreGrid}>
+            <div className={styles.resultPlayerCard} data-state={playerResultLabel(localPlayer.id, winResult.winnerId, isDraw, winResult.reason)}>
+              <div className={styles.resultPlayerName}>
+                <span className={styles.resultPlayerMark} data-ink={localPlayer.role} aria-hidden="true">{localInk.markGlyph}</span>
+                <span>{localPlayer.name} (You)</span>
               </div>
-              <div>
-                <span className="text-2xl font-black text-white">{localCompletedLines}</span>
-                <span className="text-[10px] text-slate-400 block">lines completed</span>
-              </div>
+              <strong>{localCompletedLines}</strong>
+              <span>lines completed</span>
+              <span className={styles.resultStatus}>{playerResultLabel(localPlayer.id, winResult.winnerId, isDraw, winResult.reason)}</span>
             </div>
-
-            <div
-              className={cn(
-                'p-2.5 rounded-xl border flex flex-col justify-between',
-                isLoser
-                  ? 'bg-amber-950/30 border-amber-500/40'
-                  : 'bg-slate-950/60 border-slate-800/80'
-              )}
-            >
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate">
-                  {remotePlayer.name}
-                </span>
-                {isLoser && (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
-                    WINNER
-                  </span>
-                )}
-                {isWinner && (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-medium">
-                    LOSER
-                  </span>
-                )}
+            <div className={styles.resultPlayerCard} data-state={playerResultLabel(remotePlayer.id, winResult.winnerId, isDraw, winResult.reason)}>
+              <div className={styles.resultPlayerName}>
+                <span className={styles.resultPlayerMark} data-ink={remotePlayer.role} aria-hidden="true">{remoteInk.markGlyph}</span>
+                <span>{remotePlayer.name}</span>
               </div>
-              <div>
-                <span className="text-2xl font-black text-white">{remoteCompletedLines}</span>
-                <span className="text-[10px] text-slate-400 block">lines completed</span>
-              </div>
+              <strong>{remoteCompletedLines}</strong>
+              <span>lines completed</span>
+              <span className={styles.resultStatus}>{playerResultLabel(remotePlayer.id, winResult.winnerId, isDraw, winResult.reason)}</span>
             </div>
           </div>
-
-          <div className="pt-2 flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/80">
-            <span className="flex items-center gap-1.5">
-              <Hash className="w-3.5 h-3.5 text-slate-500" />
-              Total Numbers Called:
-            </span>
-            <span className="font-bold text-slate-200">{totalCalledCount} / 25</span>
+          <div className={styles.resultTotal}>
+            <span><Hash aria-hidden="true" /> Total numbers called</span>
+            <strong>{totalCalledCount} / 25</strong>
           </div>
-        </div>
+        </section>
 
-        {/* Rematch Controls & Exit */}
-        <div className="space-y-2.5 pt-2">
-          {rematchState === 'none' && onRequestRematch && (
-            <button
-              type="button"
-              onClick={onRequestRematch}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40 transition-all active:scale-95 border border-emerald-500/50"
-            >
-              <RotateCcw className="w-4 h-4" />
+        <section className={styles.resultActions} aria-label="Result actions">
+          {rematchState === 'none' && onRequestRematch ? (
+            <button type="button" onClick={onRequestRematch} className={styles.resultPrimaryButton}>
+              <RotateCcw aria-hidden="true" />
               <span>Request Rematch</span>
             </button>
-          )}
+          ) : null}
 
-          {rematchState === 'requested' && (
-            <div className="w-full py-3 px-4 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-medium text-sm flex items-center justify-center gap-2.5">
-              <Loader2 className="w-4 h-4 animate-spin text-emerald-400 motion-reduce:animate-none" />
+          {rematchState === 'requested' ? (
+            <div className={styles.resultNotice} role="status">
+              <Loader2 aria-hidden="true" />
               <span>Rematch requested... Waiting for opponent</span>
             </div>
-          )}
+          ) : null}
 
-          {rematchState === 'received' && (
-            <div className="p-3 rounded-2xl bg-indigo-950/50 border border-indigo-500/40 space-y-2.5 text-center">
-              <p className="text-xs font-semibold text-indigo-300">
-                {remotePlayer.name} has requested a rematch!
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={onAcceptRematch}
-                  className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-950/30 transition-all active:scale-95"
-                >
-                  <Check className="w-4 h-4" />
+          {rematchState === 'received' ? (
+            <div className={styles.rematchRequest} role="status">
+              <p>{remotePlayer.name} has requested a rematch!</p>
+              <div className={styles.rematchRequestActions}>
+                <button type="button" onClick={onAcceptRematch} className={styles.resultSecondaryButton}>
+                  <Check aria-hidden="true" />
                   <span>Accept Rematch</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={onDeclineRematch}
-                  className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-slate-700"
-                >
-                  <X className="w-4 h-4" />
+                <button type="button" onClick={onDeclineRematch} className={styles.resultSecondaryButton}>
+                  <X aria-hidden="true" />
                   <span>Decline</span>
                 </button>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {rematchState === 'accepted' && (
-            <div className="w-full py-3 px-4 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2">
-              <Check className="w-4 h-4" />
-              <span>Rematch accepted! Setting up match...</span>
+          {rematchState === 'accepted' ? (
+            <div className={styles.resultNotice} role="status">
+              <Check aria-hidden="true" />
+              <span>Rematch accepted. Setting up match.</span>
             </div>
-          )}
+          ) : null}
 
-          {rematchState === 'declined' && (
-            <div className="w-full py-2.5 px-4 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-400 text-xs font-medium">
-              Rematch declined.
-            </div>
-          )}
+          {rematchState === 'declined' ? <div className={styles.resultNotice}>Rematch declined.</div> : null}
 
-          <button
-            type="button"
-            onClick={onExit}
-            className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 border border-slate-700"
-          >
-            <ArrowLeft className="w-4 h-4" />
+          {canCompare ? (
+            <button
+              type="button"
+              aria-expanded={showComparison}
+              onClick={() => setShowComparison((visible) => !visible)}
+              className={styles.resultSecondaryButton}
+            >
+              <span>{showComparison ? 'Hide Board Comparison' : 'Compare Boards'}</span>
+            </button>
+          ) : null}
+
+          {history && playersById ? <BingoMatchNotes history={history} playersById={playersById} /> : null}
+
+          <button type="button" onClick={onExit} className={styles.resultSecondaryButton}>
+            <ArrowLeft aria-hidden="true" />
             <span>Exit to Games Hub</span>
           </button>
-        </div>
+        </section>
+
+        {showComparison && canCompare ? (
+          <section className={styles.boardComparison} aria-label="Board comparison">
+            <h3>Board comparison</h3>
+            <div className={styles.comparisonGrid}>
+              <div>
+                <h4>{localPlayer.name}'s board</h4>
+                <BingoBoardView
+                  board={localBoard!}
+                  calls={calls!}
+                  playersById={playersById!}
+                  boardOwnerRole={localPlayer.role}
+                  lineDetails={localLineDetails}
+                  ariaLabel={`${localPlayer.name}'s annotated Bingo board`}
+                  className={styles.compareBoard}
+                />
+              </div>
+              <div>
+                <h4>{remotePlayer.name}'s board</h4>
+                <BingoBoardView
+                  board={remoteBoard!}
+                  calls={calls!}
+                  playersById={playersById!}
+                  boardOwnerRole={remotePlayer.role}
+                  lineDetails={remoteLineDetails}
+                  ariaLabel={`${remotePlayer.name}'s annotated Bingo board`}
+                  className={styles.compareBoard}
+                />
+              </div>
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   )

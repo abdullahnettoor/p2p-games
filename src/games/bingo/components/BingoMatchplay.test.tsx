@@ -77,7 +77,7 @@ describe('BingoMatchplay', () => {
     expect(getCalledNumbers(guestCoordinator.state.gameState.history)).toContain(7)
 
     // Turn should now be opponent's
-    expect(screen.getByText(/Bob's Turn/i)).toBeInTheDocument()
+    expect(screen.getByText("Bob's turn")).toBeInTheDocument()
   })
 
   it('shows the latest Call slip and caller ink on both clients', () => {
@@ -106,7 +106,14 @@ describe('BingoMatchplay', () => {
     render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
 
     act(() => {
-      fireEvent.click(screen.getByRole('button', { name: /pass turn/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Pass turn' }))
+    })
+
+    expect(screen.getByText(/Passing ends your turn/)).toBeInTheDocument()
+    expect(screen.getByText(/Bob is next/)).toBeInTheDocument()
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pass and end turn' }))
     })
 
     expect(hostCoordinator.state.gameState.history).toEqual([
@@ -118,7 +125,7 @@ describe('BingoMatchplay', () => {
       },
     ])
     expect(guestCoordinator.state.gameState.history).toEqual(hostCoordinator.state.gameState.history)
-    expect(screen.getByText(/Bob's Turn/i)).toBeInTheDocument()
+    expect(screen.getByText("Bob's turn")).toBeInTheDocument()
   })
 
   it('displays game-over modal when match concludes', () => {

@@ -1,8 +1,9 @@
 'use client'
 
 import React from 'react'
-import { WifiOff, AlertTriangle, Clock } from 'lucide-react'
+import { AlertTriangle, Clock, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import styles from './BingoScorecard.module.css'
 
 export interface BingoReconnectionBannerProps {
   isReconnecting: boolean
@@ -19,50 +20,43 @@ export const BingoReconnectionBanner: React.FC<BingoReconnectionBannerProps> = (
 }) => {
   if (!isReconnecting) return null
 
-  const progressPercent = Math.max(0, Math.min(100, (secondsRemaining / 30) * 100))
+  const clampedSeconds = Math.max(0, Math.min(30, secondsRemaining))
+  const progressPercent = (clampedSeconds / 30) * 100
 
   return (
-    <div
-      role="alert"
-      aria-live="assertive"
-      className={cn(
-        'relative overflow-hidden rounded-2xl border border-amber-500/50 bg-gradient-to-r from-amber-950/60 via-slate-900 to-amber-950/60 p-4 shadow-xl shadow-amber-950/30 animate-in fade-in slide-in-from-top-2 duration-300 motion-reduce:animate-none',
-        className
-      )}
-    >
-      {/* Background Warning Pulse */}
-      <div className="absolute inset-0 bg-amber-500/5 pointer-events-none" />
-
-      {/* Progress bar along the bottom */}
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-800">
-        <div
-          className="h-full bg-amber-400 transition-all duration-1000 ease-linear motion-reduce:transition-none"
-          style={{ width: `${progressPercent}%` }}
-        />
+    <div className={cn(styles.reconnectionBanner, className)}>
+      <div
+        className={styles.reconnectionCopy}
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+      >
+        <span className={styles.reconnectionIcon} aria-hidden="true">
+          <WifiOff />
+        </span>
+        <div>
+          <div className={styles.reconnectionTitle}>
+            <AlertTriangle aria-hidden="true" />
+            <span>Connection interrupted</span>
+          </div>
+          <p>
+            {remotePlayerName} is disconnected. The match is paused while we wait for them to return.
+          </p>
+        </div>
       </div>
-
-      <div className="relative flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
-            <WifiOff className="w-5 h-5" />
-          </div>
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2 justify-center sm:justify-start">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <span className="text-sm font-bold text-amber-300 uppercase tracking-wide">
-                Opponent Disconnected
-              </span>
-            </div>
-            <p className="text-xs text-slate-300">
-              Reconnecting to <span className="font-semibold text-white">{remotePlayerName}</span>. Awaiting their return...
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold shrink-0">
-          <Clock className="w-4 h-4 text-amber-400" />
-          <span>Forfeit win in {secondsRemaining}s</span>
-        </div>
+      <div
+        className={styles.reconnectionCountdown}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={30}
+        aria-valuenow={clampedSeconds}
+        aria-label={`Reconnection grace: ${clampedSeconds} seconds remaining`}
+      >
+        <Clock aria-hidden="true" />
+        <span>{clampedSeconds}s grace</span>
+      </div>
+      <div className={styles.reconnectionProgressTrack} aria-hidden="true">
+        <span style={{ transform: `scaleX(${progressPercent / 100})` }} />
       </div>
     </div>
   )
