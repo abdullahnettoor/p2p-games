@@ -19,6 +19,8 @@ export interface BingoReaction {
   timestamp: number
 }
 
+export type RematchState = 'none' | 'requested' | 'received' | 'accepted' | 'declined'
+
 export interface BingoMatchCoordinatorOptions {
   transport: ITransport
   localPlayer: PlayerSummary
@@ -26,6 +28,7 @@ export interface BingoMatchCoordinatorOptions {
   matchStartEvent: MatchStartEvent<BingoBoard>
   turnDurationSeconds?: number
   onGameOver?: (result: WinResult) => void
+  onRematch?: () => void
   enableAutoTurnTimer?: boolean
 }
 
@@ -35,6 +38,20 @@ export interface BingoMatchState {
   localPlayer: PlayerSummary
   remotePlayer: PlayerSummary
   winResult: WinResult
+  isReconnecting: boolean
+  reconnectSecondsRemaining: number
+  rematchState: RematchState
+}
+
+export const BINGO_ACTIVE_MATCH_STORAGE_KEY = 'games:bingo:active-match'
+
+export interface CachedBingoMatch {
+  localPlayer: PlayerSummary
+  remotePlayer: PlayerSummary
+  status: BingoState['status']
+  calledNumbers: number[]
+  matchStartEvent: MatchStartEvent<BingoBoard>
+  updatedAt: number
 }
 
 export class BingoMatchCoordinator {
@@ -43,17 +60,41 @@ export class BingoMatchCoordinator {
   private turnDurationSeconds: number
   private enableAutoTurnTimer: boolean
   private onGameOver?: (result: WinResult) => void
+  private onRematch?: () => void
+  private matchStartEvent: MatchStartEvent<BingoBoard>
 
   private timerInterval: ReturnType<typeof setInterval> | null = null
+  private reconnectTimer: ReturnType<typeof setInterval> | null = null
   private listeners = new Set<() => void>()
   private reactionListeners = new Set<(reaction: BingoReaction) => void>()
   private unsubscribers: Array<() => void> = []
+
+  public static getCachedMatch(): CachedBingoMatch | null {
+    if (typeof window === 'undefined' || !window.localStorage) return null
+    try {
+      const raw = localStorage.getItem(BINGO_ACTIVE_MATCH_STORAGE_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  }
+
+  public static clearCachedMatch(): void {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    try {
+      localStorage.removeItem(BINGO_ACTIVE_MATCH_STORAGE_KEY)
+    } catch {
+      // safe ignore
+    }
+  }
 
   constructor(options: BingoMatchCoordinatorOptions) {
     this.transport = options.transport
     this.turnDurationSeconds = options.turnDurationSeconds ?? 30
     this.enableAutoTurnTimer = options.enableAutoTurnTimer ?? true
     this.onGameOver = options.onGameOver
+    this.onRematch = options.onRematch
+    this.matchStartEvent = options.matchStartEvent
 
     const { matchStartEvent, localPlayer, remotePlayer } = options
 
@@ -72,8 +113,12 @@ export class BingoMatchCoordinator {
       localPlayer,
       remotePlayer,
       winResult: { isGameOver: false, winnerId: null },
+      isReconnecting: false,
+      reconnectSecondsRemaining: 30,
+      rematchState: 'none',
     }
 
+    this.persistActiveMatch()
     this.bindTransport()
     this.startTurnTimer()
   }
@@ -161,13 +206,160 @@ export class BingoMatchCoordinator {
           timestamp: payload.timestamp,
         }
         this.notifyReaction(reaction)
-      }
-    })
+        } else if (message.type === 'rematch') {
+          const { rematchIntent } = message.payload
+          if (rematchIntent === 'request') {
+            this.state = {
+              ...this.state,
+              rematchState: 'received',
+            }
+            this.notify()
+          } else if (rematchIntent === 'accept') {
+            this.state = {
+              ...this.state,
+              rematchState: 'accepted',
+            }
+            this.notify()
+            this.onRematch?.()
+          } else if (rematchIntent === 'decline') {
+            this.state = {
+              ...this.state,
+              rematchState: 'declined',
+            }
+            this.notify()
+          }
+        } else if (message.type === 'sync') {
+          this.reconcileState(message.payload.calledNumbers, message.payload.activePlayerId)
+        }
+      })
 
-    this.unsubscribers.push(unsubMsg)
+      const unsubLeave = this.transport.onPlayerLeave((playerId) => {
+        if (playerId === this.state.remotePlayer.id) {
+          this.startReconnectionCountdown()
+        }
+      })
+
+      const unsubJoin = this.transport.onPlayerJoin((playerId) => {
+        if (playerId === this.state.remotePlayer.id) {
+          this.stopReconnectionCountdown()
+          this.sendStateSync()
+        }
+      })
+
+      const unsubStatus = this.transport.onStatusChange((status) => {
+        if (status === 'disconnected' || status === 'reconnecting') {
+          this.startReconnectionCountdown()
+        } else if (status === 'connected') {
+          this.stopReconnectionCountdown()
+        }
+      })
+
+      this.unsubscribers.push(unsubMsg, unsubLeave, unsubJoin, unsubStatus)
+    }
+
+    private sendStateSync(): void {
+      if (this.transport.status === 'connected') {
+        this.transport.send({
+          type: 'sync',
+          payload: {
+            calledNumbers: this.state.gameState.calledNumbers,
+            activePlayerId: this.state.gameState.activePlayerId,
+            timestamp: Date.now(),
+          },
+        })
+      }
+    }
+
+    private reconcileState(remoteCalledNumbers: number[], activePlayerId: string): void {
+      const currentCalled = new Set(this.state.gameState.calledNumbers)
+      let updatedGameState = this.state.gameState
+
+      for (const num of remoteCalledNumbers) {
+        if (!currentCalled.has(num)) {
+          const move: BingoMove = {
+            type: 'PICK_NUMBER',
+            number: num,
+            playerId: updatedGameState.activePlayerId,
+          }
+          updatedGameState = bingoGameDefinition.applyMove(updatedGameState, move)
+        }
+      }
+
+      const winResult = bingoGameDefinition.checkWin(updatedGameState)
+
+      this.state = {
+        ...this.state,
+        gameState: {
+          ...updatedGameState,
+          activePlayerId,
+        },
+        winResult,
+      }
+
+      if (winResult.isGameOver) {
+        this.stopTurnTimer()
+        BingoMatchCoordinator.clearCachedMatch()
+        this.notify()
+        this.onGameOver?.(winResult)
+        return
+      }
+
+      this.persistActiveMatch()
+      this.notify()
+    }
+
+    private setAndSendRematch(rematchState: RematchState, intent: 'request' | 'accept' | 'decline'): void {
+      this.state = {
+        ...this.state,
+        rematchState,
+      }
+      this.transport.send({
+        type: 'rematch',
+        payload: {
+          rematchIntent: intent,
+          playerId: this.state.localPlayer.id,
+        },
+      })
+      this.notify()
+    }
+
+    public requestRematch(): void {
+      if (this.state.rematchState === 'requested' || this.state.rematchState === 'accepted') return
+      this.setAndSendRematch('requested', 'request')
+    }
+
+    public acceptRematch(): void {
+      this.setAndSendRematch('accepted', 'accept')
+      this.onRematch?.()
+    }
+
+    public declineRematch(): void {
+      this.setAndSendRematch('declined', 'decline')
+    }
+
+  private persistActiveMatch(): void {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    if (this.state.gameState.status !== 'active') {
+      BingoMatchCoordinator.clearCachedMatch()
+      return
+    }
+    try {
+      const cached: CachedBingoMatch = {
+        localPlayer: this.state.localPlayer,
+        remotePlayer: this.state.remotePlayer,
+        status: this.state.gameState.status,
+        calledNumbers: this.state.gameState.calledNumbers,
+        matchStartEvent: this.matchStartEvent,
+        updatedAt: Date.now(),
+      }
+      localStorage.setItem(BINGO_ACTIVE_MATCH_STORAGE_KEY, JSON.stringify(cached))
+    } catch {
+      // safe ignore
+    }
   }
 
   public submitMove(number: number): boolean {
+    if (this.state.isReconnecting) return false
     if (!this.isMyTurn) return false
     if (this.state.gameState.status !== 'active') return false
 
@@ -214,13 +406,92 @@ export class BingoMatchCoordinator {
 
     if (winResult.isGameOver) {
       this.stopTurnTimer()
+      BingoMatchCoordinator.clearCachedMatch()
       this.notify()
       this.onGameOver?.(winResult)
       return
     }
 
+    this.persistActiveMatch()
     this.resetTurnTimer()
     this.notify()
+  }
+
+  private startReconnectionCountdown(): void {
+    if (this.reconnectTimer) return
+    if (this.state.gameState.status !== 'active') return
+
+    this.stopTurnTimer()
+
+    this.state = {
+      ...this.state,
+      isReconnecting: true,
+      reconnectSecondsRemaining: 30,
+    }
+    this.notify()
+
+    this.reconnectTimer = setInterval(() => {
+      if (this.state.reconnectSecondsRemaining > 1) {
+        this.state = {
+          ...this.state,
+          reconnectSecondsRemaining: this.state.reconnectSecondsRemaining - 1,
+        }
+        this.notify()
+      } else {
+        this.handleReconnectionTimeout()
+      }
+    }, 1000)
+  }
+
+  private stopReconnectionCountdown(): void {
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    if (this.state.isReconnecting) {
+      this.state = {
+        ...this.state,
+        isReconnecting: false,
+        reconnectSecondsRemaining: 30,
+      }
+      if (this.state.gameState.status === 'active') {
+        this.startTurnTimer()
+      }
+      this.notify()
+    }
+  }
+
+  private handleReconnectionTimeout(): void {
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
+    const isLocalClosed = this.transport.status === 'closed'
+    const winnerId = isLocalClosed ? this.state.remotePlayer.id : this.state.localPlayer.id
+
+    const forfeitResult: WinResult = {
+      isGameOver: true,
+      winnerId,
+      reason: 'forfeit',
+    }
+
+    this.stopTurnTimer()
+    this.state = {
+      ...this.state,
+      isReconnecting: false,
+      reconnectSecondsRemaining: 0,
+      gameState: {
+        ...this.state.gameState,
+        status: 'completed',
+        winnerId,
+      },
+      winResult: forfeitResult,
+    }
+
+    BingoMatchCoordinator.clearCachedMatch()
+    this.notify()
+    this.onGameOver?.(forfeitResult)
   }
 
   private startTurnTimer(): void {
@@ -284,6 +555,7 @@ export class BingoMatchCoordinator {
 
   public destroy(): void {
     this.stopTurnTimer()
+    this.stopReconnectionCountdown()
     this.unsubscribers.forEach((unsub) => unsub())
     this.unsubscribers = []
     this.listeners.clear()

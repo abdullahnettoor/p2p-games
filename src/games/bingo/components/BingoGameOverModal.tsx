@@ -3,8 +3,9 @@
 import React from 'react'
 import { WinResult } from '@/core/games/types'
 import { PlayerSummary } from '../state/BingoMatchCoordinator'
-import { Trophy, Award, Frown, ArrowLeft, Hash } from 'lucide-react'
+import { Trophy, Award, Frown, ArrowLeft, Hash, RotateCcw, Check, X, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RematchState } from '../state/BingoMatchCoordinator'
 
 export interface BingoGameOverModalProps {
   winResult: WinResult
@@ -13,6 +14,10 @@ export interface BingoGameOverModalProps {
   localCompletedLines: number
   remoteCompletedLines: number
   totalCalledCount: number
+  rematchState?: RematchState
+  onRequestRematch?: () => void
+  onAcceptRematch?: () => void
+  onDeclineRematch?: () => void
   onExit: () => void
   className?: string
 }
@@ -24,12 +29,17 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
   localCompletedLines,
   remoteCompletedLines,
   totalCalledCount,
+  rematchState = 'none',
+  onRequestRematch,
+  onAcceptRematch,
+  onDeclineRematch,
   onExit,
   className,
 }) => {
   const isWinner = winResult.winnerId === localPlayer.id
   const isLoser = winResult.winnerId === remotePlayer.id
   const isDraw = winResult.isDraw
+  const isForfeit = winResult.reason === 'forfeit'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
@@ -69,11 +79,19 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
         {/* Title & Subtitle */}
         <div className="space-y-1.5">
           <h2 className="text-3xl font-black tracking-tight text-white">
-            {isWinner ? 'VICTORY (WINNER)' : isDraw ? "IT'S A DRAW!" : 'DEFEAT (LOSER)'}
+            {isWinner
+              ? isForfeit
+                ? 'VICTORY BY FORFEIT'
+                : 'VICTORY (WINNER)'
+              : isDraw
+              ? "IT'S A DRAW!"
+              : 'DEFEAT (LOSER)'}
           </h2>
           <p className="text-sm text-slate-400">
             {isWinner
-              ? 'Congratulations! You scored B-I-N-G-O first!'
+              ? isForfeit
+                ? `${remotePlayer.name} disconnected and did not return within 30 seconds.`
+                : 'Congratulations! You scored B-I-N-G-O first!'
               : isDraw
               ? 'Both players completed 5 lines on the same turn!'
               : `${remotePlayer.name} completed 5 lines first.`}
@@ -155,15 +173,74 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
           </div>
         </div>
 
-        {/* Action Button */}
-        <button
-          type="button"
-          onClick={onExit}
-          className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 border border-slate-700"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Exit to Games Hub</span>
-        </button>
+        {/* Rematch Controls & Exit */}
+        <div className="space-y-2.5 pt-2">
+          {rematchState === 'none' && onRequestRematch && (
+            <button
+              type="button"
+              onClick={onRequestRematch}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40 transition-all active:scale-95 border border-emerald-500/50"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Request Rematch</span>
+            </button>
+          )}
+
+          {rematchState === 'requested' && (
+            <div className="w-full py-3 px-4 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-medium text-sm flex items-center justify-center gap-2.5 animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              <span>Rematch requested... Waiting for opponent</span>
+            </div>
+          )}
+
+          {rematchState === 'received' && (
+            <div className="p-3 rounded-2xl bg-indigo-950/50 border border-indigo-500/40 space-y-2.5 text-center">
+              <p className="text-xs font-semibold text-indigo-300">
+                {remotePlayer.name} has requested a rematch!
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onAcceptRematch}
+                  className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-950/30 transition-all active:scale-95"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Accept Rematch</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onDeclineRematch}
+                  className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-slate-700"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Decline</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {rematchState === 'accepted' && (
+            <div className="w-full py-3 px-4 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2">
+              <Check className="w-4 h-4" />
+              <span>Rematch accepted! Setting up match...</span>
+            </div>
+          )}
+
+          {rematchState === 'declined' && (
+            <div className="w-full py-2.5 px-4 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-400 text-xs font-medium">
+              Rematch declined.
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={onExit}
+            className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 border border-slate-700"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Exit to Games Hub</span>
+          </button>
+        </div>
       </div>
     </div>
   )

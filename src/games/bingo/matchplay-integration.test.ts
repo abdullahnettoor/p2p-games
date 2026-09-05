@@ -131,4 +131,152 @@ describe('BINGO Dual-Player Full Matchplay Integration Test', () => {
     hostMatch.destroy()
     guestMatch.destroy()
   })
+
+  it('seamlessly negotiates rematch and transitions back to lobby setup for match 2', async () => {
+    const [hostTransport, guestTransport] = createLoopbackTransportPair()
+
+    let matchCount = 0
+    let currentHostMatch: BingoMatchCoordinator | null = null
+    let currentGuestMatch: BingoMatchCoordinator | null = null
+
+    const hostLobby: LobbyCoordinator<BingoBoard> = new LobbyCoordinator<BingoBoard>({
+      transport: hostTransport,
+      playerName: 'Alice',
+      validateSetup: (board) => validateBingoBoard(board).valid,
+      onMatchStart: (event) => {
+        matchCount++
+        currentHostMatch = new BingoMatchCoordinator({
+          transport: hostTransport,
+          localPlayer: { id: hostTransport.localPlayerId, name: 'Alice', role: 'host' },
+          remotePlayer: { id: guestTransport.localPlayerId, name: 'Bob', role: 'guest' },
+          matchStartEvent: event,
+          onRematch: () => {
+            currentHostMatch?.destroy()
+            hostLobby.resetForRematch()
+            currentHostMatch = null
+          },
+        })
+      },
+    })
+
+    const guestLobby: LobbyCoordinator<BingoBoard> = new LobbyCoordinator<BingoBoard>({
+      transport: guestTransport,
+      playerName: 'Bob',
+      validateSetup: (board) => validateBingoBoard(board).valid,
+      onMatchStart: (event) => {
+        currentGuestMatch = new BingoMatchCoordinator({
+          transport: guestTransport,
+          localPlayer: { id: guestTransport.localPlayerId, name: 'Bob', role: 'guest' },
+          remotePlayer: { id: hostTransport.localPlayerId, name: 'Alice', role: 'host' },
+          matchStartEvent: event,
+          onRematch: () => {
+            currentGuestMatch?.destroy()
+            guestLobby.resetForRematch()
+            currentGuestMatch = null
+          },
+        })
+      },
+    })
+
+    await hostLobby.start()
+    await guestLobby.start()
+
+    const board1 = Array.from({ length: 25 }, (_, i) => i + 1)
+    hostLobby.updateBoardSetup(board1)
+    guestLobby.updateBoardSetup(board1)
+    hostLobby.setReady(true)
+    guestLobby.setReady(true)
+
+    expect(matchCount).toBe(1)
+    expect(currentHostMatch).not.toBeNull()
+    expect(currentGuestMatch).not.toBeNull()
+
+    // Complete Match 1 by forfeit or moves
+    currentHostMatch!.requestRematch()
+    expect(currentGuestMatch!.state.rematchState).toBe('received')
+
+    currentGuestMatch!.acceptRematch()
+
+    // Both coordinators should have triggered onRematch and reset their lobbies
+    expect(currentHostMatch).toBeNull()
+    expect(currentGuestMatch).toBeNull()
+    expect(hostLobby.state.status).toBe('connected')
+    expect(guestLobby.state.status).toBe('connected')
+    expect(hostLobby.state.localPlayer.isReady).toBe(false)
+    expect(guestLobby.state.localPlayer.isReady).toBe(false)
+
+    // Now start Match 2 over same transport without new URLs
+    const board2 = Array.from({ length: 25 }, (_, i) => 25 - i)
+    hostLobby.updateBoardSetup(board2)
+    guestLobby.updateBoardSetup(board2)
+    hostLobby.setReady(true)
+    guestLobby.setReady(true)
+
+    expect(matchCount).toBe(2)
+    expect(currentHostMatch).not.toBeNull()
+    expect(currentGuestMatch).not.toBeNull()
+
+    currentHostMatch!.destroy()
+    currentGuestMatch!.destroy()
+  })
+
+  it('triggers 30s grace period and resolves victory by forfeit on disconnect', async () => {
+    const { vi } = await import('vitest')
+    vi.useFakeTimers()
+
+    const [hostTransport, guestTransport] = createLoopbackTransportPair()
+
+    let hostMatchStartEvent: MatchStartEvent<BingoBoard> | null = null
+
+    const hostLobby = new LobbyCoordinator<BingoBoard>({
+      transport: hostTransport,
+      playerName: 'Alice',
+      validateSetup: (board) => validateBingoBoard(board).valid,
+      onMatchStart: (e) => {
+        hostMatchStartEvent = e
+      },
+    })
+
+    const guestLobby = new LobbyCoordinator<BingoBoard>({
+      transport: guestTransport,
+      playerName: 'Bob',
+      validateSetup: (board) => validateBingoBoard(board).valid,
+    })
+
+    await hostLobby.start()
+    await guestLobby.start()
+
+    const board = Array.from({ length: 25 }, (_, i) => i + 1)
+    hostLobby.updateBoardSetup(board)
+    guestLobby.updateBoardSetup(board)
+    guestLobby.setReady(true)
+    hostLobby.setReady(true)
+
+    const hostMatch = new BingoMatchCoordinator({
+      transport: hostTransport,
+      localPlayer: { id: hostTransport.localPlayerId, name: 'Alice', role: 'host' },
+      remotePlayer: { id: guestTransport.localPlayerId, name: 'Bob', role: 'guest' },
+      matchStartEvent: hostMatchStartEvent!,
+    })
+
+    expect(hostMatch.state.isReconnecting).toBe(false)
+
+    // Guest disconnects abruptly
+    guestTransport.disconnect()
+
+    expect(hostMatch.state.isReconnecting).toBe(true)
+    expect(hostMatch.state.reconnectSecondsRemaining).toBe(30)
+
+    // Advance 30 seconds
+    vi.advanceTimersByTime(30000)
+
+    expect(hostMatch.state.isReconnecting).toBe(false)
+    expect(hostMatch.state.gameState.status).toBe('completed')
+    expect(hostMatch.winResult.isGameOver).toBe(true)
+    expect(hostMatch.winResult.winnerId).toBe(hostTransport.localPlayerId)
+    expect(hostMatch.winResult.reason).toBe('forfeit')
+
+    hostMatch.destroy()
+    vi.useRealTimers()
+  })
 })

@@ -4,13 +4,13 @@
 
 **Blocked by:** 03: Real-Time P2P BINGO Matchplay & Turn Timer
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Match state and player identity cached in localStorage throughout the session.
-- [ ] Disconnection detection initiating an automated 30-second reconnection grace period.
-- [ ] Reconnection banner with live 30-second countdown timer displayed to the remaining Player.
-- [ ] Automatic state re-synchronization upon successful peer reconnection within the grace period.
-- [ ] Automatic victory by forfeit awarded if disconnected player does not return before timer expiry.
-- [ ] In-place "Request Rematch" and "Accept Rematch" negotiation over the existing DataChannel.
-- [ ] Board reset and transition back to Lobby/Setup state for subsequent matches without new URLs.
-- [ ] Automated tests for disconnection timeout/forfeit and instant rematch lifecycle.
+- [x] Match state and player identity cached in localStorage throughout the session.
+- [x] Disconnection detection initiating an automated 30-second reconnection grace period.
+- [x] Reconnection banner with live 30-second countdown timer displayed to the remaining Player.
+- [x] Automatic state re-synchronization upon successful peer reconnection within the grace period.
+- [x] Automatic victory by forfeit awarded if disconnected player does not return before timer expiry.
+- [x] In-place "Request Rematch" and "Accept Rematch" negotiation over the existing DataChannel.
+- [x] Board reset and transition back to Lobby/Setup state for subsequent matches without new URLs.
+- [x] Automated tests for disconnection timeout/forfeit and instant rematch lifecycle.

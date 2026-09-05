@@ -11,6 +11,7 @@ import { BingoSoundToggle } from './BingoSoundToggle'
 import { BingoReactionBar } from './BingoReactionBar'
 import { BingoReactionOverlay } from './BingoReactionOverlay'
 import { BingoGameOverModal } from './BingoGameOverModal'
+import { BingoReconnectionBanner } from './BingoReconnectionBanner'
 import { ArrowLeft, User, Sparkles, Hash } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -64,6 +65,13 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           />
         </div>
       </div>
+
+      {/* 30s Reconnection Grace Period Banner */}
+      <BingoReconnectionBanner
+        isReconnecting={state.isReconnecting}
+        secondsRemaining={state.reconnectSecondsRemaining}
+        remotePlayerName={remotePlayer.name}
+      />
 
       {/* Turn Indicator & Score Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
@@ -175,7 +183,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           lineDetails={myLineDetails}
           isMyTurn={isMyTurn}
           onPickNumber={(num) => submitMove(num)}
-          disabled={!isMyTurn || isGameOver}
+          disabled={!isMyTurn || isGameOver || state.isReconnecting}
         />
       </div>
 
@@ -183,7 +191,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
       <div className="flex justify-center">
         <BingoReactionBar
           onSendReaction={(emoji) => coordinator.sendReaction(emoji)}
-          disabled={isGameOver}
+          disabled={isGameOver || state.isReconnecting}
         />
       </div>
 
@@ -231,6 +239,10 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           localCompletedLines={myLines}
           remoteCompletedLines={remoteLines}
           totalCalledCount={calledNumbers.length}
+          rematchState={state.rematchState}
+          onRequestRematch={() => coordinator.requestRematch()}
+          onAcceptRematch={() => coordinator.acceptRematch()}
+          onDeclineRematch={() => coordinator.declineRematch()}
           onExit={onExit}
         />
       )}

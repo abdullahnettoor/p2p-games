@@ -162,4 +162,24 @@ describe('LobbySession', () => {
     expect(onMatchStart).not.toHaveBeenCalled()
     expect(hostSession.state.status).not.toBe('starting')
   })
+
+  it('resets ready state for both players on resetForRematch', async () => {
+    const [hostTransport, guestTransport] = createLoopbackTransportPair()
+    const hostSession = new LobbySession({ transport: hostTransport })
+    const guestSession = new LobbySession({ transport: guestTransport })
+
+    await hostSession.start()
+    await guestSession.start()
+
+    const validBoard = Array.from({ length: 25 }, (_, i) => i + 1)
+    hostSession.updateBoardSetup(validBoard)
+    guestSession.updateBoardSetup(validBoard)
+
+    guestSession.setReady(true)
+    expect(hostSession.state.remotePlayer?.isReady).toBe(true)
+
+    hostSession.resetForRematch()
+    expect(hostSession.state.localPlayer.isReady).toBe(false)
+    expect(hostSession.state.remotePlayer?.isReady).toBe(false)
+  })
 })

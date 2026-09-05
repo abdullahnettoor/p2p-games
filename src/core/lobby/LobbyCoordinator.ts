@@ -1,6 +1,26 @@
 import { ITransport, TransportMessage } from '@/core/transport/types'
 import { LobbyPlayer, LobbyState, LobbyStatus, MatchStartEvent } from './types'
 
+export const PLAYER_NAME_STORAGE_KEY = 'games:player:name'
+
+function getPersistedPlayerName(): string | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null
+  try {
+    return localStorage.getItem(PLAYER_NAME_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function persistPlayerName(name: string): void {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  try {
+    localStorage.setItem(PLAYER_NAME_STORAGE_KEY, name)
+  } catch {
+    // safe ignore
+  }
+}
+
 export interface LobbyCoordinatorOptions<TSetupConfig = unknown> {
   transport: ITransport
   playerName?: string
@@ -24,7 +44,10 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     this.onMatchStart = options.onMatchStart
     this.inviteUrlGenerator = options.inviteUrlGenerator
 
-    const defaultName = options.playerName || (this.transport.role === 'host' ? 'Host' : 'Guest')
+    const defaultName =
+      options.playerName ||
+      getPersistedPlayerName() ||
+      (this.transport.role === 'host' ? 'Host' : 'Guest')
 
     this.state = {
       status: 'idle',
@@ -116,7 +139,11 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
   }
 
   public updatePlayerName(name: string): void {
-    const trimmed = name.trim() || (this.state.localPlayer.role === 'host' ? 'Host' : 'Guest')
+    const trimmed = name.trim()
+    if (!trimmed) return
+
+    persistPlayerName(trimmed)
+
     this.state = {
       ...this.state,
       localPlayer: {
@@ -132,6 +159,10 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
         payload: { playerName: trimmed },
       })
     }
+  }
+
+  public setPlayerName = (name: string): void => {
+    this.updatePlayerName(name)
   }
 
   public updateBoardSetup(setupConfig: TSetupConfig): void {
@@ -172,6 +203,26 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
 
     this.sendReadyMessage(isReady, this.state.localPlayer.setupConfig)
     this.checkBothReady()
+  }
+
+  public resetForRematch(): void {
+    this.state = {
+      ...this.state,
+      status: this.transport.status === 'connected' ? 'connected' : 'waiting',
+      localPlayer: {
+        ...this.state.localPlayer,
+        isReady: false,
+        setupConfig: undefined,
+      },
+      remotePlayer: this.state.remotePlayer
+        ? {
+            ...this.state.remotePlayer,
+            isReady: false,
+            setupConfig: undefined,
+          }
+        : null,
+    }
+    this.notify()
   }
 
   private sendReadyMessage(isReady: boolean, setupConfig?: TSetupConfig): void {

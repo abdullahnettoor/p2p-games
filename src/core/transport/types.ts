@@ -39,6 +39,12 @@ export interface MatchStartMessagePayload {
   setupConfigs?: Record<string, unknown>
 }
 
+export interface SyncMessagePayload {
+  calledNumbers: number[]
+  activePlayerId: string
+  timestamp: number
+}
+
 export type TransportMessage =
   | { type: 'ready'; payload: ReadyMessagePayload }
   | { type: 'move'; payload: MoveMessagePayload }
@@ -47,6 +53,7 @@ export type TransportMessage =
   | { type: 'heartbeat'; payload: HeartbeatMessagePayload }
   | { type: 'profile'; payload: ProfileMessagePayload }
   | { type: 'match_start'; payload: MatchStartMessagePayload }
+  | { type: 'sync'; payload: SyncMessagePayload }
 
 export type TransportEventHandler<T = TransportMessage> = (message: T) => void
 export type StatusChangeHandler = (status: TransportStatus) => void

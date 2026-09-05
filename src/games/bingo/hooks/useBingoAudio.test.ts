@@ -39,6 +39,9 @@ describe('useBingoAudio', () => {
       localPlayer: { id: 'p1', name: 'Player1', role: 'host' },
       remotePlayer: { id: 'p2', name: 'Player2', role: 'guest' },
       winResult: { isGameOver: false, winnerId: null },
+      isReconnecting: false,
+      reconnectSecondsRemaining: 30,
+      rematchState: 'none',
       ...overrides,
     }
   }

@@ -190,4 +190,158 @@ describe('BingoMatchCoordinator', () => {
     unsubHost()
     unsubGuest()
   })
+
+  it('persists match state to localStorage during active gameplay', () => {
+    localStorage.clear()
+    const [hostTransport, guestTransport] = createLoopbackTransportPair()
+    hostTransport.connect()
+    guestTransport.connect()
+
+    const hostBoard = generateRandomBingoBoard()
+    const guestBoard = generateRandomBingoBoard()
+    const matchStartEvent: MatchStartEvent<BingoBoard> = {
+      hostId: hostTransport.localPlayerId,
+      guestId: guestTransport.localPlayerId,
+      startingPlayerId: hostTransport.localPlayerId,
+      hostSetup: hostBoard,
+      guestSetup: guestBoard,
+    }
+
+    const hostCoordinator = new BingoMatchCoordinator({
+      transport: hostTransport,
+      localPlayer: { id: hostTransport.localPlayerId, name: 'HostAlice', role: 'host' },
+      remotePlayer: { id: guestTransport.localPlayerId, name: 'GuestBob', role: 'guest' },
+      matchStartEvent,
+    })
+
+    const cached = BingoMatchCoordinator.getCachedMatch()
+    expect(cached).not.toBeNull()
+    expect(cached?.localPlayer.id).toBe(hostCoordinator.state.localPlayer.id)
+    expect(cached?.remotePlayer.id).toBe(hostCoordinator.state.remotePlayer.id)
+    expect(cached?.status).toBe('active')
+  })
+
+  it('triggers 30s reconnection grace period on player disconnection and awards victory by forfeit upon expiry', () => {
+    const { hostCoordinator, guestTransport } = setupCoordinators()
+
+    expect(hostCoordinator.state.isReconnecting).toBe(false)
+
+    // Guest disconnects
+    guestTransport.disconnect()
+
+    expect(hostCoordinator.state.isReconnecting).toBe(true)
+    expect(hostCoordinator.state.reconnectSecondsRemaining).toBe(30)
+
+    // Advance 15 seconds
+    vi.advanceTimersByTime(15000)
+    expect(hostCoordinator.state.isReconnecting).toBe(true)
+    expect(hostCoordinator.state.reconnectSecondsRemaining).toBe(15)
+
+    // Advance remaining 15 seconds (total 30s)
+    vi.advanceTimersByTime(15000)
+
+    // Match should be won by forfeit
+    expect(hostCoordinator.state.isReconnecting).toBe(false)
+    expect(hostCoordinator.state.gameState.status).toBe('completed')
+    expect(hostCoordinator.winResult.isGameOver).toBe(true)
+    expect(hostCoordinator.winResult.winnerId).toBe(hostCoordinator.state.localPlayer.id)
+    expect(hostCoordinator.winResult.reason).toBe('forfeit')
+  })
+
+  it('recovers from reconnection grace period if player reconnects within 30s', () => {
+    const { hostCoordinator, guestTransport, hostTransport } = setupCoordinators()
+
+    // Guest disconnects
+    guestTransport.disconnect()
+    expect(hostCoordinator.state.isReconnecting).toBe(true)
+    expect(hostCoordinator.state.reconnectSecondsRemaining).toBe(30)
+
+    // Advance 10s
+    vi.advanceTimersByTime(10000)
+    expect(hostCoordinator.state.reconnectSecondsRemaining).toBe(20)
+
+    // Host status reconnects back to connected
+    hostTransport.connect()
+    expect(hostCoordinator.state.isReconnecting).toBe(false)
+    expect(hostCoordinator.state.gameState.status).toBe('active')
+  })
+
+  it('automatically synchronizes state between players upon receiving sync message', () => {
+    const { hostCoordinator, guestCoordinator, guestTransport } = setupCoordinators()
+
+    const pickedNumber = hostCoordinator.state.gameState.boards[hostCoordinator.state.localPlayer.id][0]
+    hostCoordinator.submitMove(pickedNumber)
+
+    // Clear guest called numbers to simulate desync
+    guestCoordinator.state = {
+      ...guestCoordinator.state,
+      gameState: {
+        ...guestCoordinator.state.gameState,
+        calledNumbers: [],
+      },
+    }
+    expect(guestCoordinator.state.gameState.calledNumbers).toEqual([])
+
+    // Guest receives sync message
+    guestTransport.receiveMessage({
+      type: 'sync',
+      payload: {
+        calledNumbers: [pickedNumber],
+        activePlayerId: guestCoordinator.state.localPlayer.id,
+        timestamp: Date.now(),
+      },
+    })
+
+    expect(guestCoordinator.state.gameState.calledNumbers).toEqual([pickedNumber])
+    expect(guestCoordinator.state.gameState.activePlayerId).toBe(guestCoordinator.state.localPlayer.id)
+  })
+
+  it('negotiates rematch lifecycle in-place over the transport', () => {
+    const onHostRematch = vi.fn()
+    const onGuestRematch = vi.fn()
+
+    const [hostTransport, guestTransport] = createLoopbackTransportPair()
+    hostTransport.connect()
+    guestTransport.connect()
+
+    const matchStartEvent: MatchStartEvent<BingoBoard> = {
+      hostId: hostTransport.localPlayerId,
+      guestId: guestTransport.localPlayerId,
+      startingPlayerId: hostTransport.localPlayerId,
+      hostSetup: Array.from({ length: 25 }, (_, i) => i + 1),
+      guestSetup: Array.from({ length: 25 }, (_, i) => i + 1),
+    }
+
+    const hostCoordinator = new BingoMatchCoordinator({
+      transport: hostTransport,
+      localPlayer: { id: hostTransport.localPlayerId, name: 'Alice', role: 'host' },
+      remotePlayer: { id: guestTransport.localPlayerId, name: 'Bob', role: 'guest' },
+      matchStartEvent,
+      onRematch: onHostRematch,
+    })
+
+    const guestCoordinator = new BingoMatchCoordinator({
+      transport: guestTransport,
+      localPlayer: { id: guestTransport.localPlayerId, name: 'Bob', role: 'guest' },
+      remotePlayer: { id: hostTransport.localPlayerId, name: 'Alice', role: 'host' },
+      matchStartEvent,
+      onRematch: onGuestRematch,
+    })
+
+    expect(hostCoordinator.state.rematchState).toBe('none')
+    expect(guestCoordinator.state.rematchState).toBe('none')
+
+    // Host requests rematch
+    hostCoordinator.requestRematch()
+    expect(hostCoordinator.state.rematchState).toBe('requested')
+    expect(guestCoordinator.state.rematchState).toBe('received')
+
+    // Guest accepts rematch
+    guestCoordinator.acceptRematch()
+    expect(guestCoordinator.state.rematchState).toBe('accepted')
+    expect(hostCoordinator.state.rematchState).toBe('accepted')
+
+    expect(onHostRematch).toHaveBeenCalledTimes(1)
+    expect(onGuestRematch).toHaveBeenCalledTimes(1)
+  })
 })

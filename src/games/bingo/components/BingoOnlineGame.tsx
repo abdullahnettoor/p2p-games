@@ -64,12 +64,18 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
         const local = lobby.state.localPlayer
         const remote = lobby.state.remotePlayer
         if (remote) {
-          const match = new BingoMatchCoordinator({
+          const match: BingoMatchCoordinator = new BingoMatchCoordinator({
             transport,
             localPlayer: { id: local.id, name: local.name, role: local.role },
             remotePlayer: { id: remote.id, name: remote.name, role: remote.role },
             matchStartEvent: event,
             turnDurationSeconds: 30,
+            onRematch: () => {
+              BingoMatchCoordinator.clearCachedMatch()
+              match.destroy()
+              lobby.resetForRematch()
+              setMatchCoordinator(null)
+            },
           })
           setMatchCoordinator(match)
         }

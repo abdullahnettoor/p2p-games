@@ -44,7 +44,7 @@ export class LoopbackTransport implements ITransport {
     if (this.status === 'connected') return this.localPlayerId
 
     if (this.role === 'host') {
-      if (this.targetTransport && this.targetTransport.status === 'connecting') {
+      if (this.targetTransport && (this.targetTransport.status === 'connecting' || this.status === 'reconnecting')) {
         this.performHandshake(this.targetTransport)
       } else {
         this.setStatus('connecting')
@@ -58,7 +58,7 @@ export class LoopbackTransport implements ITransport {
     }
 
     this.setStatus('connecting')
-    if (this.targetTransport.status === 'connecting' || this.targetTransport.status === 'connected') {
+    if (this.targetTransport.status === 'connecting' || this.targetTransport.status === 'connected' || this.targetTransport.status === 'reconnecting') {
       this.performHandshake(this.targetTransport)
     }
 
@@ -130,6 +130,7 @@ export class LoopbackTransport implements ITransport {
     if (this.targetTransport && this.targetTransport.status === 'connected') {
       const target = this.targetTransport
       target.remotePlayerId = null
+      target.setStatus('reconnecting')
       if (previousRemote) {
         target.notifyPlayerLeave(this.localPlayerId)
       }
