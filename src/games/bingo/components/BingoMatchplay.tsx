@@ -19,7 +19,7 @@ import { BingoMatchNotes } from './BingoMatchNotes'
 import { BingoGameOverModal } from './BingoGameOverModal'
 import { BingoReconnectionBanner } from './BingoReconnectionBanner'
 import { cn } from '@/lib/utils'
-import styles from './BingoScorecard.module.css'
+import styles from './BingoMatchplay.module.css'
 
 interface PlayerLedgerEntryProps {
   player: PlayerSummary
@@ -106,7 +106,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
   }
 
   return (
-    <div className={cn(styles.tokenScope, styles.matchSurface, className)}>
+    <div className={cn('bingoTokenScope', styles.matchSurface, className)}>
       <BingoReactionOverlay coordinator={coordinator} />
 
       <div className={styles.utilityBar}>
@@ -118,7 +118,6 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           isMuted={isMuted}
           onToggle={toggleMute}
           showLabel
-          className={styles.paperIconButton}
         />
       </div>
 
@@ -200,7 +199,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
         </section>
 
         {announcement ? (
-          <p className={styles.srOnly} role="status" aria-live="polite" aria-atomic="true">
+          <p className="bingoSrOnly" role="status" aria-live="polite" aria-atomic="true">
             {announcement}
           </p>
         ) : null}
@@ -276,7 +275,6 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
         <BingoReactionBar
           onSendReaction={(emoji) => coordinator.sendReaction(emoji)}
           disabled={isGameOver || state.isReconnecting}
-          className={styles.paperReactionBar}
         />
       </div>
 

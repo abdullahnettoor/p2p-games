@@ -1,7 +1,7 @@
 import React from 'react'
 import { BingoTurnEvent } from '../types'
 import { BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
-import styles from './BingoScorecard.module.css'
+import styles from './BingoMatchNotes.module.css'
 
 export interface BingoMatchNotesProps {
   history: BingoTurnEvent[]

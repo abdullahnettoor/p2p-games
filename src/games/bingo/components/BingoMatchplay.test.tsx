@@ -147,7 +147,7 @@ describe('BingoMatchplay', () => {
 
     expect(hostCoordinator.state.gameState.status).toBe('completed')
     expect(screen.getByText(/(VICTORY|DEFEAT|IT'S A DRAW!)/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /exit to games hub/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /exit to games/i })).toBeInTheDocument()
   })
 
   it('renders sound toggle button and toggles mute state', () => {

@@ -1,0 +1,46 @@
+.resultBackdrop { position: fixed; z-index: 50; inset: 0; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 1rem; background: rgba(39, 49, 58, 0.72); overscroll-behavior: contain; }
+.resultDialog { width: min(100%, 42rem); max-height: calc(100dvh - 2rem); margin: 0 auto; overflow-y: auto; border: 1px solid var(--bingo-paper-shadow); border-radius: 0.875rem; padding: clamp(0.75rem, 3vw, 1.5rem); background: radial-gradient(circle at 18% 20%, rgba(39, 49, 58, 0.025) 0 0.45px, transparent 0.7px), var(--bingo-paper); background-size: 31px 29px, auto; box-shadow: 0 5px 14px var(--bingo-slip-shadow); color: var(--bingo-graphite); }
+.resultHeader { position: relative; border-bottom: 2px solid var(--bingo-graphite); padding-bottom: 1rem; text-align: center; }
+.resultKicker, .resultSummaryLabel { margin: 0; color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.resultMasthead { margin: 0.25rem 0 0; font-size: clamp(1.75rem, 9vw, 2.625rem); font-weight: 900; letter-spacing: 0.08em; line-height: 0.88; }
+.resultBadge { display: grid; width: 4.5rem; height: 4.5rem; place-items: center; margin: 1rem auto 0.75rem; border: 2px solid var(--bingo-graphite); border-radius: 0.875rem; background: var(--bingo-paper-raised); color: var(--bingo-graphite); transform: rotate(-2deg); }
+.resultBadge svg { width: 2rem; height: 2rem; }
+.resultBadge[data-result="draw"] { border-color: var(--bingo-rule); color: var(--bingo-graphite-muted); }
+.resultTitle { margin: 0; font-size: clamp(1.5rem, 7vw, 2.25rem); font-weight: 900; letter-spacing: 0.02em; line-height: 1; }
+.resultDescription { max-width: 34rem; margin: 0.5rem auto 0; color: var(--bingo-graphite-muted); font-size: 0.875rem; line-height: 1.45; }
+.resultSummary { margin-top: 1rem; border-bottom: 1px solid var(--bingo-rule); padding-bottom: 1rem; }
+.resultScoreGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
+.resultPlayerCard { position: relative; display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 0.25rem; border: 1px solid var(--bingo-rule); border-radius: 0.5rem; padding: 0.75rem 0.5rem 0.625rem; background: color-mix(in srgb, var(--bingo-paper-raised) 76%, transparent); text-align: center; }
+.resultPlayerCard[data-state="WINNER"] { border-width: 2px; border-color: var(--bingo-graphite); }
+.resultPlayerCard strong { font-size: 1.75rem; font-weight: 900; line-height: 1; }
+.resultPlayerCard > span:not(.resultPlayerName):not(.resultStatus) { color: var(--bingo-graphite-muted); font-size: 0.625rem; }
+.resultPlayerName { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: center; gap: 0.25rem; overflow: hidden; font-size: 0.75rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.resultPlayerMark { font-size: 1rem; line-height: 1; }
+.resultPlayerMark[data-ink="host"] { color: var(--bingo-host-ink); }
+.resultPlayerMark[data-ink="guest"] { color: var(--bingo-guest-ink); }
+.resultStatus { border: 1px solid var(--bingo-rule); border-radius: 0.25rem; padding: 0.125rem 0.375rem; color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.06em; line-height: 1.2; }
+.resultTotal { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.75rem; border-top: 1px solid var(--bingo-rule-soft); padding-top: 0.75rem; color: var(--bingo-graphite-muted); font-size: 0.75rem; }
+.resultTotal span { display: inline-flex; align-items: center; gap: 0.375rem; }
+.resultTotal svg { width: 1rem; height: 1rem; }
+.resultTotal strong { color: var(--bingo-graphite); font-variant-numeric: tabular-nums; }
+.resultActions { display: grid; gap: 0.5rem; margin-top: 1rem; }
+.resultPrimaryButton, .resultSecondaryButton { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.5rem; padding: 0.625rem 0.75rem; font-family: var(--bingo-font-label); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; line-height: 1.2; text-align: center; text-transform: uppercase; }
+.resultPrimaryButton { border: 1px solid var(--bingo-graphite); background: var(--bingo-graphite); color: var(--bingo-paper-raised); }
+.resultSecondaryButton { border: 1px solid var(--bingo-rule); background: var(--bingo-paper-raised); color: var(--bingo-graphite); }
+.resultSecondaryButton:hover { background: var(--bingo-rule-soft); color: var(--bingo-graphite); }
+.resultPrimaryButton:hover { border-color: var(--bingo-graphite); background: color-mix(in srgb, var(--bingo-graphite) 88%, var(--bingo-paper)); color: var(--bingo-paper-raised); }
+.resultPrimaryButton svg, .resultSecondaryButton svg, .resultNotice svg, .rematchRequest svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
+.resultNotice, .rematchRequest { border: 1px solid var(--bingo-rule); border-radius: 0.5rem; padding: 0.75rem; color: var(--bingo-graphite-muted); font-size: 0.75rem; line-height: 1.35; text-align: center; }
+.resultNotice { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+.rematchRequest { color: var(--bingo-graphite); }
+.rematchRequest p { margin: 0; font-weight: 800; }
+.rematchRequestActions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.625rem; }
+.boardComparison { margin-top: 1rem; border-top: 1px solid var(--bingo-rule); padding-top: 1rem; }
+.boardComparison h3 { margin: 0; font-size: 1rem; font-weight: 800; }
+.comparisonGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+.comparisonGrid h4 { margin: 0 0 0.5rem; color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-align: center; text-transform: uppercase; }
+.compareBoard { max-width: 18rem; }
+.resultPrimaryButton:focus-visible, .resultSecondaryButton:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
+
+@media (max-width: 48rem) { .comparisonGrid { grid-template-columns: 1fr; } .compareBoard { max-width: 22rem; } }
+@media (max-width: 22.5rem) { .resultBackdrop { padding: 0.5rem; } .resultDialog { max-height: calc(100dvh - 1rem); padding: 0.625rem; } .resultScoreGrid { gap: 0.25rem; } .resultTotal { align-items: flex-start; flex-direction: column; gap: 0.25rem; } }

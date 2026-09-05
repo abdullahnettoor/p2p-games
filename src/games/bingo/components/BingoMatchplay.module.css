@@ -1,0 +1,182 @@
+.matchSurface {
+  position: relative;
+  width: 100%;
+  max-width: 64rem;
+  min-height: 100dvh;
+  margin-inline: auto;
+  padding: 0.5rem;
+  color: var(--bingo-graphite);
+  font-family: var(--bingo-font-print);
+  isolation: isolate;
+}
+
+.matchSurface::before {
+  position: absolute;
+  z-index: -1;
+  inset: -1rem;
+  content: "";
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(circle at 13% 17%, rgba(39, 49, 58, 0.035) 0 0.6px, transparent 0.8px),
+    radial-gradient(circle at 84% 72%, rgba(39, 49, 58, 0.025) 0 0.7px, transparent 0.9px),
+    var(--bingo-desk);
+  background-size: 37px 41px, 53px 47px, auto;
+}
+
+.utilityBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 35rem;
+  margin: 0 auto 0.75rem;
+}
+
+.reconnection { max-width: 35rem; margin: 0 auto 0.75rem; }
+
+.utilityButton {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border: 1px solid rgba(39, 49, 58, 0.3);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--bingo-graphite);
+  box-shadow: none;
+}
+
+.utilityButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline: 0.75rem;
+  font-family: var(--bingo-font-label);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.utilityButton:hover {
+  border-color: var(--bingo-graphite);
+  background: var(--bingo-paper-raised);
+  color: var(--bingo-graphite);
+}
+
+.utilityButton:focus-visible,
+.passButton:focus-visible,
+.passConfirmButton:focus-visible,
+.passCancelButton:focus-visible {
+  outline: 3px solid var(--bingo-focus);
+  outline-offset: 2px;
+}
+
+.scoreSheet {
+  position: relative;
+  width: min(100%, 35rem);
+  margin-inline: auto;
+  overflow: visible;
+  border: 1px solid var(--bingo-paper-shadow);
+  border-radius: 0.875rem;
+  padding: clamp(0.625rem, 3vw, 1.5rem);
+  background:
+    radial-gradient(circle at 19% 23%, rgba(39, 49, 58, 0.025) 0 0.45px, transparent 0.7px),
+    radial-gradient(circle at 73% 61%, rgba(23, 94, 156, 0.018) 0 0.5px, transparent 0.75px),
+    var(--bingo-paper);
+  background-size: 31px 29px, 47px 43px, auto;
+  box-shadow: 0 18px 50px var(--bingo-sheet-shadow-strong), 0 2px 5px var(--bingo-sheet-shadow-soft);
+}
+
+.sheetHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.25rem 0.25rem 0.75rem;
+  border-bottom: 2px solid var(--bingo-graphite);
+}
+
+.masthead {
+  margin: 0;
+  font-size: clamp(1.75rem, 9vw, 2.625rem);
+  font-weight: 900;
+  line-height: 0.88;
+  letter-spacing: 0.08em;
+}
+
+.issueLabel {
+  max-width: 10rem;
+  color: var(--bingo-graphite-muted);
+  font-family: var(--bingo-font-label);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.playerLedger { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--bingo-rule); }
+.playerEntry { min-width: 0; padding: 0.75rem 0.5rem; }
+.playerEntry + .playerEntry { border-left: 1px solid var(--bingo-rule); padding-left: 1rem; }
+.playerIdentity { display: flex; min-width: 0; align-items: center; gap: 0.5rem; }
+.inkDot { display: grid; width: 1.25rem; height: 1.25rem; flex: 0 0 auto; place-items: center; color: var(--player-ink); font-size: 1.125rem; font-weight: 900; line-height: 1; }
+.inkDot[data-mark-shape="cross"]::before { content: "×"; transform: rotate(-4deg); }
+.inkDot[data-mark-shape="loop"]::before { content: "○"; transform: rotate(3deg); }
+.playerInk[data-ink="host"] { --player-ink: var(--bingo-host-ink); }
+.playerInk[data-ink="guest"] { --player-ink: var(--bingo-guest-ink); }
+.playerName { overflow: hidden; font-size: 0.875rem; font-weight: 800; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.playerMeta { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.25rem; padding-left: 1.75rem; color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+
+.turnStrip { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; margin-top: 1rem; border: 1px solid var(--bingo-rule); border-bottom: 0; border-radius: 0.5rem 0.5rem 0 0; padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.62); }
+.turnCopy { min-width: 0; }
+.turnLabel { display: block; font-size: clamp(1rem, 4vw, 1.125rem); font-weight: 800; line-height: 1.15; }
+.turnInstruction { display: block; margin-top: 0.25rem; color: var(--bingo-graphite-muted); font-size: 0.75rem; font-weight: 600; line-height: 1.25; }
+.turnActions { display: flex; align-items: center; gap: 0.5rem; }
+.passGroup { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+.passButton { min-width: 3.5rem; min-height: 2.75rem; border: 1px solid var(--bingo-graphite); border-radius: 0.5rem; padding-inline: 0.75rem; background: transparent; color: var(--bingo-graphite); font-family: var(--bingo-font-label); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.passButton:hover:not(:disabled) { background: var(--bingo-graphite); color: var(--bingo-paper-raised); }
+.passButton:disabled { cursor: not-allowed; opacity: 0.45; }
+.passHint { color: var(--bingo-graphite-muted); font-size: 0.625rem; line-height: 1; white-space: nowrap; }
+.timerSpacer { min-width: 4.25rem; }
+
+.progressRow { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem 0.25rem 0.5rem; }
+.progressLabel { color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; }
+
+.callSlipSlot { position: absolute; z-index: 6; top: 9.75rem; left: calc(100% - 0.75rem); width: 8.5rem; }
+.callSlip { width: 100%; border: 1px solid var(--player-ink); border-radius: 3px; padding: 0.5rem 0.75rem; background: var(--bingo-paper-raised); box-shadow: 0 5px 14px var(--bingo-slip-shadow); color: var(--player-ink); transform: rotate(1.5deg); animation: bingo-slip-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.callSlipLabel { display: block; overflow: hidden; font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.05em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.callSlipNumber { display: block; margin-top: 0.25rem; font-size: 1.75rem; font-weight: 900; line-height: 1; }
+
+.history { margin-top: 0.75rem; border-top: 1px solid var(--bingo-rule); padding: 0.75rem 0.25rem 0; }
+.historyHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.historyList { display: flex; min-height: 2rem; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.historyItem { --player-ink: var(--bingo-graphite-muted); display: inline-flex; min-width: 2rem; min-height: 2rem; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--player-ink) 55%, transparent); border-radius: 0.25rem; color: var(--player-ink); font-size: 0.75rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.historyItem[data-latest="true"] { border-width: 2px; background: color-mix(in srgb, var(--player-ink) 8%, transparent); }
+.historyMark { margin-right: 0.25rem; font-size: 1rem; line-height: 1; }
+
+.reactionDock { display: flex; justify-content: center; margin-top: 1rem; }
+
+.passConfirmation { width: min(100%, 15rem); border: 1px solid var(--bingo-rule); border-radius: 0.5rem; padding: 0.5rem; background: color-mix(in srgb, var(--bingo-graphite) 5%, transparent); text-align: left; }
+.passConfirmation p { margin: 0; color: var(--bingo-graphite); font-size: 0.75rem; font-weight: 700; line-height: 1.3; }
+.passConfirmationActions { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.5rem; }
+.passConfirmButton, .passCancelButton { min-height: 2.75rem; border: 1px solid var(--bingo-graphite); border-radius: 0.5rem; padding-inline: 0.5rem; font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.passConfirmButton { background: var(--bingo-graphite); color: var(--bingo-paper-raised); }
+.passCancelButton { background: transparent; color: var(--bingo-graphite); }
+.passConfirmButton:hover { background: color-mix(in srgb, var(--bingo-graphite) 88%, var(--bingo-paper)); color: var(--bingo-paper-raised); }
+.passCancelButton:hover { background: var(--bingo-rule-soft); color: var(--bingo-graphite); }
+
+@media (max-width: 48rem) {
+  .callSlipSlot { position: relative; top: auto; left: auto; display: flex; width: 100%; min-height: 3.5rem; align-items: center; justify-content: flex-end; padding: 0.5rem 0.25rem 0; }
+  .callSlip { display: flex; width: min(100%, 11rem); align-items: baseline; justify-content: space-between; gap: 1rem; transform: rotate(-0.5deg); }
+  .callSlipNumber { margin-top: 0; }
+}
+
+@media (max-width: 22.5rem) {
+  .matchSurface { width: calc(100% + 1rem); margin-inline: -0.5rem; padding: 0.5rem; }
+  .matchSurface::before { inset-inline: -0.5rem; border-radius: 0; }
+  .scoreSheet { padding: 0.625rem; }
+  .issueLabel { max-width: 7rem; font-size: 0.625rem; }
+  .turnStrip { padding-inline: 0.5rem; }
+  .turnInstruction, .passHint { display: none; }
+  .passConfirmation { width: min(100%, 12rem); }
+}

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { BINGO_LETTERS } from '../engine'
 import { cn } from '@/lib/utils'
 import { BingoInkRole } from '../bingoInk'
-import styles from './BingoScorecard.module.css'
+import styles from './BingoLetterTracker.module.css'
 
 interface BingoLetterTrackerProps {
   completedLines: number
@@ -31,7 +31,7 @@ export const BingoLetterTracker: React.FC<BingoLetterTrackerProps> = ({
   return (
     <div
       className={cn(
-        styles.tokenScope,
+        'bingoTokenScope',
         styles.letterTracker,
         styles.playerInk,
         className

@@ -2,7 +2,9 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { BingoBoard, BingoCall, LineDetails } from '../types'
 import { BingoInkRole, BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
 import { cn } from '@/lib/utils'
-import styles from './BingoScorecard.module.css'
+import { BingoGrid } from './grid/BingoGrid'
+import gridStyles from './grid/BingoGrid.module.css'
+import styles from './BingoBoardView.module.css'
 
 interface BingoBoardViewProps {
   board: BingoBoard
@@ -18,6 +20,14 @@ interface BingoBoardViewProps {
 }
 
 const DEFAULT_LINE_DETAILS: LineDetails = { count: 0, rows: [], cols: [], diags: [] }
+
+type BingoCellState = {
+  num: number
+  call?: BingoCall
+  caller?: BingoPlayerInk
+  isCalled: boolean
+  cellLabel: string
+}
 
 const HOST_SCRIBBLE_PATHS = [
   ['M18 19 C35 36 59 61 83 81', 'M79 17 C62 39 40 58 19 84'],
@@ -111,76 +121,77 @@ export const BingoBoardView: React.FC<BingoBoardViewProps> = ({
     previousLineIdsRef.current = nextLineIds
   }, [lineKey])
 
+  const getCellState = (index: number): BingoCellState => {
+    const num = board[index]
+    const call = callByNumber.get(num)
+    const caller = call ? playersById[call.playerId] : undefined
+    const isCalled = calledSet.has(num)
+    return {
+      num,
+      call,
+      caller,
+      isCalled,
+      cellLabel: isCalled
+        ? `Cell ${num}, called by ${caller?.name ?? 'unknown Player'}`
+        : `Cell ${num}, not called`,
+    }
+  }
+
   return (
-    <div
-      role="grid"
-      aria-label={ariaLabel}
-      aria-rowcount={5}
-      aria-colcount={5}
-      aria-describedby={lineSummaryId}
-      className={cn(styles.tokenScope, styles.boardFrame, className)}
-      data-testid="bingo-board"
-    >
-      {Array.from({ length: 5 }, (_, row) => (
-        <div key={row} role="row" aria-rowindex={row + 1} className={styles.boardGridRow}>
-          {board.slice(row * 5, row * 5 + 5).map((num, column) => {
-            const call = callByNumber.get(num)
-            const caller = call ? playersById[call.playerId] : undefined
-            const isCalled = calledSet.has(num)
-            const canClick = isMyTurn && !isCalled && !disabled
-            const callerInk = caller?.role ?? 'neutral'
-            const markShape = caller ? getBingoInkPresentation(caller.role).markShape : 'cross'
-            const scribblePaths = markShape === 'loop'
-              ? GUEST_SCRIBBLE_PATHS[num % GUEST_SCRIBBLE_PATHS.length]
-              : HOST_SCRIBBLE_PATHS[num % HOST_SCRIBBLE_PATHS.length]
-            const cellLabel = isCalled
-              ? `Cell ${num}, called by ${caller?.name ?? 'unknown Player'}`
-              : `Cell ${num}, not called`
+    <BingoGrid
+      ariaLabel={ariaLabel}
+      className={className}
+      testId="bingo-board"
+      ariaDescribedBy={lineSummaryId}
+      getCellProps={({ index }) => {
+        const { cellLabel, isCalled } = getCellState(index)
+        return {
+          'aria-label': cellLabel,
+          'aria-selected': isCalled,
+        }
+      }}
+      renderCell={({ index }) => {
+        const { num, call, caller, isCalled, cellLabel } = getCellState(index)
+        const canClick = isMyTurn && !isCalled && !disabled
+        const callerInk = caller?.role ?? 'neutral'
+        const markShape = caller ? getBingoInkPresentation(caller.role).markShape : 'cross'
+        const scribblePaths = markShape === 'loop'
+          ? GUEST_SCRIBBLE_PATHS[num % GUEST_SCRIBBLE_PATHS.length]
+          : HOST_SCRIBBLE_PATHS[num % HOST_SCRIBBLE_PATHS.length]
 
-            return (
-              <div
-                key={num}
-                role="gridcell"
-                aria-label={cellLabel}
-                aria-rowindex={row + 1}
-                aria-colindex={column + 1}
-                aria-selected={isCalled}
-                className={styles.boardGridCell}
+        return (
+          <button
+            type="button"
+            aria-label={isCalled ? `${num}, called by ${caller?.name ?? 'unknown Player'}` : String(num)}
+            aria-description={cellLabel}
+            aria-pressed={isCalled}
+            disabled={!canClick}
+            data-enabled={canClick ? 'true' : 'false'}
+            onClick={() => {
+              if (canClick) onPickNumber(num)
+            }}
+            className={gridStyles.gridButton}
+          >
+            <span className={styles.cellNumber}>{num}</span>
+            {call ? (
+              <svg
+                viewBox="0 0 100 100"
+                aria-hidden="true"
+                className={styles.callScribble}
+                data-call-number={num}
+                data-ink={callerInk}
+                data-mark-shape={markShape}
+                data-animated={call.sequence === animatedSequence ? 'true' : 'false'}
               >
-                <button
-                  type="button"
-                  aria-label={isCalled ? `${num}, called by ${caller?.name ?? 'unknown Player'}` : String(num)}
-                  aria-pressed={isCalled}
-                  disabled={!canClick}
-                  data-enabled={canClick ? 'true' : 'false'}
-                  onClick={() => {
-                    if (canClick) onPickNumber(num)
-                  }}
-                  className={styles.boardCell}
-                >
-                  <span className={styles.cellNumber}>{num}</span>
-                  {call ? (
-                    <svg
-                      viewBox="0 0 100 100"
-                      aria-hidden="true"
-                      className={styles.callScribble}
-                      data-call-number={num}
-                      data-ink={callerInk}
-                      data-mark-shape={markShape}
-                      data-animated={call.sequence === animatedSequence ? 'true' : 'false'}
-                    >
-                      <path pathLength="1" d={scribblePaths[0]} />
-                      <path pathLength="1" d={scribblePaths[1]} />
-                    </svg>
-                  ) : null}
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      ))}
-
-      <div id={lineSummaryId} className={styles.srOnly} role="note">
+                <path pathLength="1" d={scribblePaths[0]} />
+                <path pathLength="1" d={scribblePaths[1]} />
+              </svg>
+            ) : null}
+          </button>
+        )
+      }}
+    >
+      <div id={lineSummaryId} className="bingoSrOnly" role="note">
         {completedLineDescription(lineDetails)}
       </div>
 
@@ -206,6 +217,6 @@ export const BingoBoardView: React.FC<BingoBoardViewProps> = ({
           ))}
         </svg>
       ) : null}
-    </div>
+    </BingoGrid>
   )
 }

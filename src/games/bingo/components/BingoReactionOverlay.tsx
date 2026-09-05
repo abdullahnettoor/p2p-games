@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { BingoMatchCoordinator, BingoReaction } from '../state/BingoMatchCoordinator'
 import { SoundSynthesizer, defaultSoundSynthesizer } from '@/core/audio/SoundSynthesizer'
 import { cn } from '@/lib/utils'
-import styles from './BingoScorecard.module.css'
+import styles from './BingoReaction.module.css'
 
 interface DisplayReaction extends BingoReaction {
   xPercent: number
@@ -74,7 +74,7 @@ export const BingoReactionOverlay: React.FC<BingoReactionOverlayProps> = ({
             </svg>
             <span className={styles.doodleGlyph} aria-hidden="true">{reaction.emoji}</span>
             <span className={styles.doodleSender}>{sender}</span>
-            <span className={styles.srOnly}>{sender} sent a doodle {reaction.emoji}</span>
+            <span className="bingoSrOnly">{sender} sent a doodle {reaction.emoji}</span>
           </div>
         )
       })}

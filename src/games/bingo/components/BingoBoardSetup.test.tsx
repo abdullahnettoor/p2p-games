@@ -66,13 +66,11 @@ describe('BingoBoardSetup', () => {
     expect(handleComplete.mock.calls[0][0]).toHaveLength(25)
   })
 
-  it('uses touch-sized controls', () => {
+  it('uses the shared board grid and touch-sized setup controls', () => {
     render(<BingoBoardSetup onBoardComplete={() => {}} />)
 
-    expect(screen.getByRole('button', { name: 'Empty cell, row 1, column 1. Place 1' })).toHaveClass(
-      'min-h-11',
-      'min-w-11'
-    )
+    expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
+    expect(screen.getAllByRole('gridcell')).toHaveLength(25)
     expect(screen.getByRole('button', { name: 'Shuffle board' })).toHaveClass('min-h-11')
   })
 })

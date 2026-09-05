@@ -1,0 +1,67 @@
+.cellNumber {
+  position: relative;
+  z-index: 5;
+}
+
+.callScribble {
+  --call-ink: var(--bingo-graphite-muted);
+  position: absolute;
+  z-index: 2;
+  inset: 7%;
+  width: 86%;
+  height: 86%;
+  overflow: visible;
+  color: var(--call-ink);
+  pointer-events: none;
+}
+
+.callScribble[data-ink="host"] { --call-ink: var(--bingo-host-ink); }
+.callScribble[data-ink="guest"] { --call-ink: var(--bingo-guest-ink); }
+
+.callScribble path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  opacity: 0.78;
+  vector-effect: non-scaling-stroke;
+}
+
+.callScribble[data-animated="true"] path {
+  animation: bingo-ink-draw 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.callScribble[data-animated="true"] path + path { animation-delay: 80ms; }
+
+.lineOverlay {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: var(--player-ink);
+  pointer-events: none;
+}
+
+.lineStroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  opacity: 0.58;
+  vector-effect: non-scaling-stroke;
+}
+
+.lineStroke[data-animated="true"] {
+  animation: bingo-ink-draw 440ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.playerInk[data-ink="host"] { --player-ink: var(--bingo-host-ink); }
+.playerInk[data-ink="guest"] { --player-ink: var(--bingo-guest-ink); }

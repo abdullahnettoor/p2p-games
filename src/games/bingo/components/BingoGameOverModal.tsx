@@ -9,7 +9,7 @@ import { BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
 import { PlayerSummary, RematchState } from '../state/BingoMatchCoordinator'
 import { BingoBoardView } from './BingoBoardView'
 import { BingoMatchNotes } from './BingoMatchNotes'
-import styles from './BingoScorecard.module.css'
+import styles from './BingoGameOverModal.module.css'
 
 export interface BingoGameOverModalProps {
   winResult: WinResult
@@ -165,7 +165,7 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
         <header className={styles.resultHeader}>
           <p className={styles.resultKicker}>Final match result</p>
           <h1 className={styles.resultMasthead}>BINGO</h1>
-          <div className={cn(styles.resultBadge, styles.playerInk)} data-result={isDraw ? 'draw' : isWinner ? 'win' : 'loss'}>
+          <div className={styles.resultBadge} data-result={isDraw ? 'draw' : isWinner ? 'win' : 'loss'}>
             {isWinner ? <Trophy aria-hidden="true" /> : isDraw ? <Award aria-hidden="true" /> : <Frown aria-hidden="true" />}
           </div>
           <h2 id="bingo-result-title" className={styles.resultTitle} aria-live="assertive">
@@ -259,7 +259,7 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
 
           <button type="button" onClick={onExit} className={styles.resultSecondaryButton}>
             <ArrowLeft aria-hidden="true" />
-            <span>Exit to Games Hub</span>
+            <span>Exit to games</span>
           </button>
         </section>
 

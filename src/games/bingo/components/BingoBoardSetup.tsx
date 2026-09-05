@@ -3,6 +3,8 @@ import { BingoBoard } from '../types'
 import { generateRandomBingoBoard, validateBingoBoard, TOTAL_NUMBERS } from '../engine'
 import { cn } from '@/lib/utils'
 import { CheckCircle2, RotateCcw, Shuffle, Trash2 } from 'lucide-react'
+import { BingoGrid } from './grid/BingoGrid'
+import gridStyles from './grid/BingoGrid.module.css'
 
 interface BingoBoardSetupProps {
   initialBoard?: BingoBoard
@@ -141,11 +143,10 @@ export const BingoBoardSetup: React.FC<BingoBoardSetupProps> = ({
         </div>
       </div>
 
-      <div
-        className="grid grid-cols-5 gap-2 p-2 sm:p-3 bg-slate-900/90 rounded-2xl border border-slate-800 shadow-xl max-w-md w-full"
-        aria-label="BINGO Board setup"
-      >
-        {board.map((number, index) => {
+      <BingoGrid
+        ariaLabel="BINGO Board setup"
+        renderCell={({ index }) => {
+          const number = board[index]
           const row = Math.floor(index / 5) + 1
           const column = (index % 5) + 1
           const isSelected = selectedSwapIndex === index
@@ -161,13 +162,13 @@ export const BingoBoardSetup: React.FC<BingoBoardSetupProps> = ({
 
           return (
             <button
-              key={index}
               type="button"
               aria-label={action}
               aria-pressed={number === null ? undefined : isSelected}
               onClick={() => handleCellClick(index)}
               className={cn(
-                'aspect-square min-h-11 min-w-11 flex items-center justify-center rounded-xl font-bold text-lg md:text-xl transition-all duration-150 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+                gridStyles.gridButton,
+                'rounded-xl border font-bold text-lg transition-all duration-150',
                 number !== null
                   ? isSelected
                     ? 'bg-amber-950/70 text-amber-200 border-amber-500 ring-2 ring-amber-400/30'
@@ -178,8 +179,8 @@ export const BingoBoardSetup: React.FC<BingoBoardSetupProps> = ({
               {number ?? <span className="text-xs text-slate-600 font-normal">{index + 1}</span>}
             </button>
           )
-        })}
-      </div>
+        }}
+      />
 
       {selectedSwapIndex !== null ? (
         <p className="text-sm text-amber-300" role="status">

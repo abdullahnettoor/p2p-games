@@ -3,7 +3,7 @@
 import React from 'react'
 import { AlertTriangle, Clock, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import styles from './BingoScorecard.module.css'
+import styles from './BingoReconnectionBanner.module.css'
 
 export interface BingoReconnectionBannerProps {
   isReconnecting: boolean

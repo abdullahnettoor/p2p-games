@@ -8,6 +8,14 @@ A zero-install, browser-based peer-to-peer multiplayer game platform hosting mod
 A pluggable definition of rules, state transitions, board rendering, and win conditions (e.g., BINGO, Hangman).
 _Avoid_: RuleSet, Minigame, App
 
+**Catalog**:
+The platform's home surface, presenting every available Game as a drawer of icons. It is the only place a Game is chosen, and it offers no Game-specific actions.
+_Avoid_: Hub, Home, Menu, Landing, Storefront
+
+**Game Shell**:
+The full-screen surface a Game owns once it is opened from the Catalog. Platform identity and platform chrome stop at its edge; the Game supplies its own visual system and its own single exit.
+_Avoid_: Hub, Wrapper, Container, Game page
+
 **Match**:
 A single live session of a Game played between two Players with an explicit lifecycle (waiting, active, completed).
 _Avoid_: Room, Session, Lobby instance

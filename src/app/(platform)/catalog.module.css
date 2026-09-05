@@ -1,0 +1,157 @@
+.catalog {
+  width: min(100%, 48rem);
+  min-height: calc(100dvh - 9.5rem);
+  margin-inline: auto;
+  padding: clamp(2rem, 8vh, 5rem) 0 2rem;
+}
+
+.catalogHeading {
+  margin-bottom: clamp(2rem, 7vh, 4.5rem);
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 0.75rem;
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.catalogHeading h1 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-weight: 850;
+  letter-spacing: -0.055em;
+}
+
+.gameGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(0.75rem, 3vw, 1.5rem);
+}
+
+.gameTile {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 9.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  border: 1px solid #273449;
+  border-radius: 1rem;
+  padding: 1rem 0.5rem;
+  background: #111c2d;
+  color: #e2e8f0;
+  text-decoration: none;
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease, opacity 160ms ease;
+}
+
+.gameTile:hover {
+  border-color: #e8b85c;
+  background: #16243a;
+  transform: translateY(-3px);
+}
+
+.gameTile:focus-visible {
+  outline: 3px solid #f3c969;
+  outline-offset: 3px;
+}
+
+.gameTileOpening {
+  border-color: #f3c969;
+  pointer-events: none;
+}
+
+.gameTileOpening .iconFrame {
+  animation: expandGameMaterial 260ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.iconFrame {
+  position: relative;
+  display: grid;
+  width: clamp(3.5rem, 10vw, 5rem);
+  height: clamp(3.5rem, 10vw, 5rem);
+  place-items: center;
+  border: 1px solid #42516a;
+  border-radius: 1.25rem;
+  background: #0d1726;
+  color: #e9bb5f;
+}
+
+.gameIcon {
+  width: 72%;
+  height: 72%;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.gameLabel {
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.gameTileDisabled {
+  cursor: default;
+  opacity: 0.46;
+}
+
+.gameTileDisabled:hover {
+  border-color: #273449;
+  background: #111c2d;
+  transform: none;
+}
+
+.comingSoonBadge {
+  position: absolute;
+  right: -0.45rem;
+  top: -0.45rem;
+  border: 1px solid #4a586f;
+  border-radius: 999px;
+  padding: 0.2rem 0.4rem;
+  background: #1e293b;
+  color: #aeb9ca;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@keyframes expandGameMaterial {
+  to {
+    transform: scale(5.5);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .catalog {
+    padding-top: 2rem;
+  }
+
+  .gameGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gameTile {
+    min-height: 8.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gameTile,
+  .gameTileOpening,
+  .gameTileOpening .iconFrame {
+    transition: none;
+    animation: none;
+  }
+}

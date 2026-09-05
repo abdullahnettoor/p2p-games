@@ -13,13 +13,13 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: navigation.replace }),
 }))
 
-vi.mock('@/games/bingo/components/BingoLocalGame', () => ({
-  BingoLocalGame: () => <div>Local BINGO</div>,
-}))
 
 vi.mock('@/games/bingo/components/BingoOnlineGame', () => ({
-  BingoOnlineGame: ({ role, matchId }: { role: string; matchId?: string }) => (
-    <div>{`Online BINGO: ${role}:${matchId ?? 'new'}`}</div>
+  BingoOnlineGame: ({ role, matchId, onExit }: { role: string; matchId?: string; onExit: () => void }) => (
+    <div>
+      <span>{`Online BINGO: ${role}:${matchId ?? 'new'}`}</span>
+      <button type="button" onClick={onExit}>Exit game</button>
+    </div>
   ),
 }))
 
@@ -29,18 +29,11 @@ describe('BingoPage', () => {
     navigation.replace.mockClear()
   })
 
-  it('makes online play primary and keeps Pass & Play secondary', () => {
+  it('starts an online Host Match directly when opened from the Catalog', () => {
     render(<BingoPage />)
 
-    expect(screen.getByRole('button', { name: 'Create Online Match' })).toHaveAttribute(
-      'data-priority',
-      'primary'
-    )
-    expect(screen.getByRole('button', { name: 'Pass & Play on this device' })).toHaveAttribute(
-      'data-priority',
-      'secondary'
-    )
-    expect(screen.getByRole('link', { name: 'All Games' })).toHaveClass('min-h-11')
+    expect(screen.getByText('Online BINGO: host:new')).toBeInTheDocument()
+    expect(screen.queryByText(/Pass & Play/i)).not.toBeInTheDocument()
   })
 
   it('opens an invited Guest Match without showing mode selection', () => {
@@ -51,12 +44,11 @@ describe('BingoPage', () => {
     expect(screen.queryByRole('button', { name: 'Create Online Match' })).not.toBeInTheDocument()
   })
 
-  it('starts a Host Match from the primary action', () => {
+  it('returns to the Catalog when the game exits', () => {
     render(<BingoPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Online Match' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Exit game' }))
 
-    expect(screen.getByText('Online BINGO: host:new')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Change Mode' })).toHaveClass('min-h-11')
+    expect(navigation.replace).toHaveBeenCalledWith('/')
   })
 })

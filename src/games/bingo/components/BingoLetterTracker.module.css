@@ -1,0 +1,31 @@
+.letterTracker {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.25rem, 1.5vw, 0.5rem);
+}
+
+.letterStamp {
+  display: grid;
+  width: clamp(1.75rem, 8vw, 2.25rem);
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid var(--bingo-rule);
+  color: var(--bingo-rule);
+  font-size: clamp(0.875rem, 4vw, 1.125rem);
+  font-weight: 900;
+  line-height: 1;
+  transform: rotate(var(--stamp-rotation));
+}
+
+.letterStamp[data-active="true"] {
+  border: 2px solid var(--player-ink);
+  color: var(--player-ink);
+  opacity: 0.9;
+}
+
+.letterStamp[data-new-stamp="true"] {
+  animation: bingo-stamp-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.playerInk[data-ink="host"] { --player-ink: var(--bingo-host-ink); }
+.playerInk[data-ink="guest"] { --player-ink: var(--bingo-guest-ink); }

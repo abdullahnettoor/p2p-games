@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import styles from './BingoScorecard.module.css'
+import styles from './BingoReaction.module.css'
 
 export const BINGO_REACTION_EMOJIS = ['👋', '😂', '😱', '🔥', '👏'] as const
 export type BingoReactionEmoji = (typeof BINGO_REACTION_EMOJIS)[number]

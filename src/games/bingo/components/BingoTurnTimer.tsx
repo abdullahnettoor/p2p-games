@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { cn } from '@/lib/utils'
-import styles from './BingoScorecard.module.css'
+import styles from './BingoTurnTimer.module.css'
 
 export interface BingoTurnTimerProps {
   secondsRemaining: number
@@ -23,7 +23,7 @@ export const BingoTurnTimer: React.FC<BingoTurnTimerProps> = ({
       role="timer"
       aria-label={`${secondsRemaining} seconds remaining${isMyTurn ? ' in your turn' : ''}`}
       data-urgency={urgency}
-      className={cn(styles.tokenScope, styles.timer, className)}
+      className={cn('bingoTokenScope', styles.timer, className)}
     >
       <span className={styles.timerValue}>{secondsRemaining}s</span>
       <span className={styles.timerLabel}>seconds left</span>
