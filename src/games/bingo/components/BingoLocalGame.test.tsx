@@ -8,13 +8,13 @@ describe('BingoLocalGame Component', () => {
 
     // Player 1 setup screen
     expect(screen.getByText(/Player 1/i)).toBeInTheDocument()
-    const randomizeBtn = screen.getByRole('button', { name: /Randomize/i })
+    const randomizeBtn = screen.getByRole('button', { name: /Shuffle board/i })
     fireEvent.click(randomizeBtn)
     fireEvent.click(screen.getByRole('button', { name: /Confirm Board/i }))
 
     // Player 2 setup screen
     expect(screen.getByText(/Player 2/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Randomize/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Shuffle board/i }))
     fireEvent.click(screen.getByRole('button', { name: /Confirm Board/i }))
 
     // Active Match view

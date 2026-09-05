@@ -2,75 +2,87 @@ import React, { useState } from 'react'
 import { BingoBoard } from '../types'
 import { generateRandomBingoBoard, validateBingoBoard, TOTAL_NUMBERS } from '../engine'
 import { cn } from '@/lib/utils'
-import { Shuffle, RotateCcw, CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, RotateCcw, Shuffle, Trash2 } from 'lucide-react'
 
 interface BingoBoardSetupProps {
   initialBoard?: BingoBoard
   onBoardComplete: (board: BingoBoard) => void
   playerName?: string
+  submitLabel?: string
   className?: string
+}
+
+function createEmptyBoard(): Array<number | null> {
+  return Array(TOTAL_NUMBERS).fill(null)
 }
 
 export const BingoBoardSetup: React.FC<BingoBoardSetupProps> = ({
   initialBoard,
   onBoardComplete,
   playerName = 'Player',
+  submitLabel = 'Confirm Board',
   className,
 }) => {
-  const [board, setBoard] = useState<(number | null)[]>(() => {
+  const [board, setBoard] = useState<Array<number | null>>(() => {
     if (initialBoard && initialBoard.length === TOTAL_NUMBERS) {
-      return initialBoard
+      return [...initialBoard]
     }
-    return Array(TOTAL_NUMBERS).fill(null)
+    return createEmptyBoard()
   })
+  const [boardHistory, setBoardHistory] = useState<Array<Array<number | null>>>([])
+  const [selectedSwapIndex, setSelectedSwapIndex] = useState<number | null>(null)
 
-  const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null)
-
-  const placedNumbersSet = new Set(board.filter((n): n is number => n !== null))
-  const isComplete = placedNumbersSet.size === TOTAL_NUMBERS
+  const placedCount = board.reduce<number>((count, number) => count + (number === null ? 0 : 1), 0)
+  const nextNumber = placedCount < TOTAL_NUMBERS ? placedCount + 1 : null
+  const isComplete = placedCount === TOTAL_NUMBERS
   const validation = isComplete ? validateBingoBoard(board as BingoBoard) : { valid: false }
 
+  const commitBoard = (nextBoard: Array<number | null>) => {
+    setBoardHistory((history) => [...history, board])
+    setBoard(nextBoard)
+    setSelectedSwapIndex(null)
+  }
+
   const handleRandomize = () => {
-    const randomBoard = generateRandomBingoBoard()
-    setBoard(randomBoard)
-    setSelectedSlotIndex(null)
+    commitBoard(generateRandomBingoBoard())
   }
 
   const handleClear = () => {
-    setBoard(Array(TOTAL_NUMBERS).fill(null))
-    setSelectedSlotIndex(null)
+    if (placedCount === 0) return
+    commitBoard(createEmptyBoard())
   }
 
-  const handleSlotClick = (index: number) => {
-    if (board[index] !== null) {
-      // Remove number from slot
-      const nextBoard = [...board]
-      nextBoard[index] = null
-      setBoard(nextBoard)
-      setSelectedSlotIndex(index)
-    } else {
-      setSelectedSlotIndex(index)
-    }
+  const handleUndo = () => {
+    if (boardHistory.length === 0) return
+    setBoard(boardHistory[boardHistory.length - 1])
+    setBoardHistory((history) => history.slice(0, -1))
+    setSelectedSwapIndex(null)
   }
 
-  const handleNumberPaletteClick = (num: number) => {
-    if (placedNumbersSet.has(num)) return
+  const handleCellClick = (index: number) => {
+    const number = board[index]
 
-    // Place into selected slot or first available empty slot
-    let targetIndex = selectedSlotIndex
-    if (targetIndex === null || board[targetIndex] !== null) {
-      targetIndex = board.findIndex((n) => n === null)
-    }
-
-    if (targetIndex !== -1) {
+    if (number === null) {
+      if (nextNumber === null) return
       const nextBoard = [...board]
-      nextBoard[targetIndex] = num
-      setBoard(nextBoard)
-
-      // Auto-advance selectedSlotIndex to next empty slot
-      const nextEmpty = nextBoard.findIndex((n, idx) => idx > targetIndex! && n === null)
-      setSelectedSlotIndex(nextEmpty !== -1 ? nextEmpty : null)
+      nextBoard[index] = nextNumber
+      commitBoard(nextBoard)
+      return
     }
+
+    if (selectedSwapIndex === null) {
+      setSelectedSwapIndex(index)
+      return
+    }
+
+    if (selectedSwapIndex === index) {
+      setSelectedSwapIndex(null)
+      return
+    }
+
+    const nextBoard = [...board]
+    ;[nextBoard[selectedSwapIndex], nextBoard[index]] = [nextBoard[index], nextBoard[selectedSwapIndex]]
+    commitBoard(nextBoard)
   }
 
   const handleConfirm = () => {
@@ -84,109 +96,112 @@ export const BingoBoardSetup: React.FC<BingoBoardSetupProps> = ({
       <div className="text-center space-y-1">
         <h2 className="text-2xl font-bold tracking-tight text-slate-100">Set Up Your Board</h2>
         <p className="text-sm text-slate-400">
-          {playerName}, arrange numbers 1 to 25 manually or click Randomize.
+          {playerName}, tap any empty cell to place each number in order.
         </p>
       </div>
 
-      {/* Action Toolbar */}
       <div className="flex items-center gap-3 w-full justify-between max-w-md">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleRandomize}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition-all active:scale-95"
+            aria-label="Shuffle board"
+            className="min-h-11 flex items-center gap-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition-all active:scale-95"
           >
-            <Shuffle className="w-3.5 h-3.5" />
-            <span>Randomize</span>
+            <Shuffle className="w-4 h-4" />
+            <span>Shuffle</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleUndo}
+            disabled={boardHistory.length === 0}
+            aria-label="Undo last change"
+            className="min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span className="hidden sm:inline">Undo</span>
           </button>
           <button
             type="button"
             onClick={handleClear}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all active:scale-95"
+            disabled={placedCount === 0}
+            aria-label="Clear board"
+            className="min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Clear</span>
+            <Trash2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Clear</span>
           </button>
         </div>
 
-        <div className="text-xs font-medium text-slate-400">
-          <span className={cn('font-bold', isComplete ? 'text-emerald-400' : 'text-amber-400')}>
-            {placedNumbersSet.size}
-          </span>
-          /{TOTAL_NUMBERS} placed
+        <div className="text-right text-xs font-medium text-slate-400" aria-live="polite">
+          <strong className={cn('block text-sm', isComplete ? 'text-emerald-400' : 'text-amber-400')}>
+            {nextNumber === null ? 'All 25 placed' : `Place ${nextNumber}`}
+          </strong>
+          <span>{placedCount}/{TOTAL_NUMBERS}</span>
         </div>
       </div>
 
-      {/* 5x5 Board Grid */}
-      <div className="grid grid-cols-5 gap-2 md:gap-3 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 shadow-xl max-w-md w-full">
-        {board.map((num, idx) => {
-          const isSelected = selectedSlotIndex === idx
+      <div
+        className="grid grid-cols-5 gap-2 p-2 sm:p-3 bg-slate-900/90 rounded-2xl border border-slate-800 shadow-xl max-w-md w-full"
+        aria-label="BINGO Board setup"
+      >
+        {board.map((number, index) => {
+          const row = Math.floor(index / 5) + 1
+          const column = (index % 5) + 1
+          const isSelected = selectedSwapIndex === index
+          const selectedNumber = selectedSwapIndex === null ? null : board[selectedSwapIndex]
+          const action =
+            number === null
+              ? `Empty cell, row ${row}, column ${column}. Place ${nextNumber}`
+              : isSelected
+                ? `Number ${number}, row ${row}, column ${column}. Selected for swap`
+                : selectedNumber !== null
+                  ? `Number ${number}, row ${row}, column ${column}. Swap with number ${selectedNumber}`
+                  : `Number ${number}, row ${row}, column ${column}. Select to swap`
+
           return (
             <button
-              key={idx}
+              key={index}
               type="button"
-              onClick={() => handleSlotClick(idx)}
+              aria-label={action}
+              aria-pressed={number === null ? undefined : isSelected}
+              onClick={() => handleCellClick(index)}
               className={cn(
-                'aspect-square flex items-center justify-center rounded-xl font-bold text-lg md:text-xl transition-all duration-150 border',
-                num !== null
-                  ? 'bg-indigo-950/60 text-indigo-200 border-indigo-700/60 hover:border-red-400/50 shadow-sm'
-                  : isSelected
-                  ? 'bg-slate-800 border-indigo-400 ring-2 ring-indigo-400/40 text-slate-500'
-                  : 'bg-slate-800/40 border-slate-700/60 hover:border-slate-600 text-slate-600'
+                'aspect-square min-h-11 min-w-11 flex items-center justify-center rounded-xl font-bold text-lg md:text-xl transition-all duration-150 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
+                number !== null
+                  ? isSelected
+                    ? 'bg-amber-950/70 text-amber-200 border-amber-500 ring-2 ring-amber-400/30'
+                    : 'bg-indigo-950/60 text-indigo-200 border-indigo-700/60 hover:border-amber-400/70 shadow-sm'
+                  : 'bg-slate-800/40 border-slate-700/60 hover:border-indigo-400 text-slate-500'
               )}
             >
-              {num ?? (
-                <span className="text-[10px] text-slate-600 font-normal">#{idx + 1}</span>
-              )}
+              {number ?? <span className="text-xs text-slate-600 font-normal">{index + 1}</span>}
             </button>
           )
         })}
       </div>
 
-      {/* Number Palette for manual placement */}
-      {!isComplete && (
-        <div className="space-y-2 w-full max-w-md">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 text-center">
-            Click number to place
-          </div>
-          <div className="flex flex-wrap justify-center gap-1.5 p-3 bg-slate-900/60 rounded-xl border border-slate-800/60">
-            {Array.from({ length: TOTAL_NUMBERS }, (_, i) => i + 1).map((n) => {
-              const isPlaced = placedNumbersSet.has(n)
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  disabled={isPlaced}
-                  onClick={() => handleNumberPaletteClick(n)}
-                  className={cn(
-                    'w-8 h-8 rounded-lg text-xs font-bold transition-all',
-                    isPlaced
-                      ? 'bg-slate-900 text-slate-700 opacity-40 cursor-not-allowed'
-                      : 'bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white border border-slate-700 active:scale-95'
-                  )}
-                >
-                  {n}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+      {selectedSwapIndex !== null ? (
+        <p className="text-sm text-amber-300" role="status">
+          Number {board[selectedSwapIndex]} selected. Choose another filled cell to swap.
+        </p>
+      ) : (
+        <p className="text-xs text-slate-500">Tap two filled cells to swap them.</p>
       )}
 
-      {/* Confirm Button */}
       <button
         type="button"
         disabled={!isComplete || !validation.valid}
         onClick={handleConfirm}
         className={cn(
-          'w-full max-w-md py-3 px-6 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all duration-200',
+          'min-h-11 w-full max-w-md px-6 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
           isComplete && validation.valid
-            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 cursor-pointer active:scale-98'
+            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 cursor-pointer active:scale-95'
             : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
         )}
       >
         <CheckCircle2 className="w-5 h-5" />
-        <span>Confirm Board</span>
+        <span>{submitLabel}</span>
       </button>
     </div>
   )

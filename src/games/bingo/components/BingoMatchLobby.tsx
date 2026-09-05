@@ -7,16 +7,15 @@ import { BingoBoard } from '../types'
 import { BingoBoardSetup } from './BingoBoardSetup'
 import { BingoBoardView } from './BingoBoardView'
 import {
-  Copy,
-  Check,
-  Users,
-  User,
+  AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   Clock,
-  Sparkles,
-  ArrowLeft,
-  AlertCircle,
   Loader2,
+  Pencil,
+  QrCode,
+  Share2,
+  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -26,47 +25,115 @@ export interface BingoMatchLobbyProps {
   className?: string
 }
 
+type InviteFeedback = 'idle' | 'shared' | 'copied' | 'error'
+
+function inkClasses(role: 'host' | 'guest'): string {
+  return role === 'host' ? 'bg-blue-500 ring-blue-300/40' : 'bg-rose-500 ring-rose-300/40'
+}
+
 export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   session,
   onExit,
   className,
 }) => {
-  const { state, updatePlayerName, updateBoardSetup, setReady, canReady } = useLobby(session)
-  const [copied, setCopied] = useState(false)
-  const [nameEditing, setNameEditing] = useState(false)
+  const { state, updatePlayerName, updateBoardSetup, setReady } = useLobby(session)
   const [localNameInput, setLocalNameInput] = useState(state.localPlayer.name)
+  const [inviteFeedback, setInviteFeedback] = useState<InviteFeedback>('idle')
+  const [showQrCode, setShowQrCode] = useState(false)
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null)
+  const [qrCodeError, setQrCodeError] = useState(false)
 
-  const handleCopyLink = async () => {
-    if (state.inviteUrl) {
+  const copyInvite = async (inviteUrl: string) => {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error('Clipboard is unavailable')
+    }
+    await navigator.clipboard.writeText(inviteUrl)
+    setInviteFeedback('copied')
+  }
+
+  const handleShareInvite = async () => {
+    if (!state.inviteUrl) return
+    setInviteFeedback('idle')
+
+    try {
+      if (typeof navigator.share === 'function') {
+        await navigator.share({
+          title: 'Join my BINGO Match',
+          text: 'Join me for a BINGO Match.',
+          url: state.inviteUrl,
+        })
+        setInviteFeedback('shared')
+        return
+      }
+
+      await copyInvite(state.inviteUrl)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
       try {
-        await navigator.clipboard.writeText(state.inviteUrl)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
+        await copyInvite(state.inviteUrl)
       } catch {
-        // fallback
+        setInviteFeedback('error')
       }
     }
   }
 
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLocalNameInput(e.target.value)
-    updatePlayerName(e.target.value)
+  const handleCopyInvite = async () => {
+    if (!state.inviteUrl) return
+    setInviteFeedback('idle')
+    try {
+      await copyInvite(state.inviteUrl)
+    } catch {
+      setInviteFeedback('error')
+    }
+  }
+
+  const handleToggleQrCode = async () => {
+    if (showQrCode) {
+      setShowQrCode(false)
+      return
+    }
+
+    setShowQrCode(true)
+    if (!state.inviteUrl || qrCodeDataUrl) return
+
+    setQrCodeError(false)
+    try {
+      const { toDataURL } = await import('qrcode')
+      const dataUrl = await toDataURL(state.inviteUrl, {
+        width: 192,
+        margin: 1,
+        color: { dark: '#0f172a', light: '#ffffff' },
+      })
+      setQrCodeDataUrl(dataUrl)
+    } catch {
+      setQrCodeError(true)
+    }
+  }
+
+  const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalNameInput(event.target.value)
+    updatePlayerName(event.target.value)
+  }
+
+  const handleBoardReady = (board: BingoBoard) => {
+    updateBoardSetup(board)
+    setReady(true)
   }
 
   const isLocalReady = state.localPlayer.isReady
-  const isRemoteConnected = Boolean(state.remotePlayer && state.remotePlayer.connected)
+  const isRemoteConnected = Boolean(state.remotePlayer?.connected)
   const isRemoteReady = Boolean(state.remotePlayer?.isReady)
   const isStarting = state.status === 'starting'
+  const remoteRole = state.localPlayer.role === 'host' ? 'guest' : 'host'
 
   return (
     <div className={cn('space-y-6 max-w-4xl mx-auto w-full py-2', className)}>
-      {/* Lobby Navigation / Exit */}
       <div className="flex items-center justify-between">
         {onExit ? (
           <button
             type="button"
             onClick={onExit}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+            className="min-h-11 inline-flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Leave Lobby</span>
@@ -75,310 +142,203 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
           <div />
         )}
 
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60">
+        <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60">
           <Users className="w-3.5 h-3.5 text-indigo-400" />
           <span>Match Lobby</span>
         </div>
       </div>
 
-      {/* Error Alert */}
-      {state.error && (
-        <div className="p-4 rounded-2xl bg-red-950/80 border border-red-800/80 text-red-200 flex items-center gap-3">
+      {state.error ? (
+        <div role="alert" className="p-4 rounded-2xl bg-red-950/80 border border-red-800/80 text-red-200 flex items-center gap-3">
           <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400" />
           <div className="text-sm">
-            <span className="font-bold">Connection Error: </span>
+            <span className="font-bold">Connection error. </span>
             {state.error}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* Host Invite Link Banner */}
-      {state.localPlayer.role === 'host' && state.inviteUrl && (
-        <div className="p-5 rounded-3xl bg-gradient-to-r from-indigo-950/60 to-slate-900 border border-indigo-800/40 space-y-3 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                Invite Your Opponent
-              </h3>
-              <p className="text-xs text-slate-400">
-                Send this direct link to a friend. They can join immediately without signing up.
-              </p>
-            </div>
+      {state.localPlayer.role === 'host' && state.inviteUrl ? (
+        <section className="p-5 rounded-3xl bg-gradient-to-r from-indigo-950/60 to-slate-900 border border-indigo-800/40 space-y-4 shadow-lg" aria-labelledby="invite-heading">
+          <div className="space-y-1">
+            <h2 id="invite-heading" className="text-base font-bold text-white">Invite your friend</h2>
+            <p className="text-sm text-slate-400">Share the link now. You can arrange your board while they connect.</p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              readOnly
-              value={state.inviteUrl}
-              className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 font-mono select-all focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
+          <div className="flex flex-col sm:flex-row gap-2">
             <button
               type="button"
-              onClick={handleCopyLink}
-              className={cn(
-                'flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 flex-shrink-0',
-                copied
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-              )}
+              onClick={handleShareInvite}
+              className="min-h-11 flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white shadow-md transition-colors hover:bg-indigo-500"
             >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy Link</span>
-                </>
-              )}
+              <Share2 className="w-4 h-4" />
+              Share invite
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyInvite}
+              className="min-h-11 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+              Copy link
+            </button>
+            <button
+              type="button"
+              onClick={handleToggleQrCode}
+              aria-expanded={showQrCode}
+              className="min-h-11 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+              <QrCode className="w-4 h-4" />
+              {showQrCode ? 'Hide QR code' : 'Show QR code'}
             </button>
           </div>
-        </div>
-      )}
 
-      {/* Players Coordination Cards */}
+          <input
+            type="text"
+            readOnly
+            aria-label="Match invite link"
+            value={state.inviteUrl}
+            className="w-full min-h-11 bg-slate-950/80 border border-slate-800 rounded-xl px-3 text-xs text-slate-300 font-mono select-all focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+
+          {inviteFeedback === 'shared' ? <p role="status" className="text-sm text-emerald-300">Invite shared</p> : null}
+          {inviteFeedback === 'copied' ? <p role="status" className="text-sm text-emerald-300">Invite link copied</p> : null}
+          {inviteFeedback === 'error' ? (
+            <p role="alert" className="text-sm text-red-300">Could not share the invite. Select the link and copy it manually.</p>
+          ) : null}
+
+          {showQrCode ? (
+            <div className="rounded-2xl bg-white p-3 w-fit mx-auto" aria-live="polite">
+              {qrCodeDataUrl ? (
+                <img src={qrCodeDataUrl} alt="QR code for the Match invite" width={192} height={192} />
+              ) : qrCodeError ? (
+                <p className="max-w-48 text-center text-sm text-red-700">Could not create the QR code. Use the invite link instead.</p>
+              ) : (
+                <div className="w-48 h-48 flex items-center justify-center text-slate-700">
+                  <Loader2 className="w-6 h-6 animate-spin" aria-label="Creating QR code" />
+                </div>
+              )}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Local Player Card */}
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600/30 text-indigo-400 border border-indigo-500/40 flex items-center justify-center font-bold text-xs">
-                <User className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 block">
-                  You ({state.localPlayer.role.toUpperCase()})
-                </span>
-                <span className="text-sm font-extrabold text-white">
-                  {state.localPlayer.name}
-                </span>
+        <section className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 shadow-md" aria-label="Your Player status">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex items-center gap-2.5">
+              <span aria-label={`${state.localPlayer.role === 'host' ? 'Host' : 'Guest'} ink`} className={cn('w-3 h-3 flex-none rounded-full ring-4', inkClasses(state.localPlayer.role))} />
+              <div className="min-w-0">
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 block">You ({state.localPlayer.role.toUpperCase()})</span>
+                <span className="text-sm font-extrabold text-white truncate block">{state.localPlayer.name}</span>
               </div>
             </div>
-
             <span
-              className={cn(
-                'text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1',
+              className={
                 isLocalReady
-                  ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
-                  : 'bg-slate-800 text-slate-400 border-slate-700'
-              )}
+                  ? 'text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 bg-emerald-950 text-emerald-300 border-emerald-800'
+                  : 'text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 bg-slate-800 text-slate-400 border-slate-700'
+              }
             >
-              {isLocalReady ? (
-                <>
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  <span>Ready</span>
-                </>
-              ) : (
-                <>
-                  <Clock className="w-3 h-3 text-slate-400" />
-                  <span>Not Ready</span>
-                </>
-              )}
+              {isLocalReady ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+              <span>{isLocalReady ? 'Ready' : 'Not ready'}</span>
             </span>
           </div>
 
           <div className="pt-2 border-t border-slate-800/80">
-            <label
-              htmlFor="display-name"
-              className="block text-[11px] font-semibold text-slate-400 mb-1"
-            >
-              Your Display Name
-            </label>
+            <label htmlFor="display-name" className="block text-xs font-semibold text-slate-400 mb-1">Your display name</label>
             <input
               id="display-name"
               type="text"
               maxLength={20}
               value={localNameInput}
+              disabled={isLocalReady}
               onChange={handleNameChange}
-              placeholder="Enter your name..."
-              className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Enter your name"
+              className="w-full min-h-11 bg-slate-950/60 border border-slate-800 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
             />
           </div>
-        </div>
+        </section>
 
-        {/* Remote Opponent Card */}
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  'w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border',
-                  isRemoteConnected
-                    ? 'bg-emerald-950/40 text-emerald-400 border-emerald-700/50'
-                    : 'bg-amber-950/40 text-amber-400 border-amber-700/50'
-                )}
-              >
-                {isRemoteConnected ? (
-                  <User className="w-4 h-4" />
-                ) : (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                )}
-              </div>
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
-                  Opponent (
-                  {state.localPlayer.role === 'host' ? 'GUEST' : 'HOST'})
-                </span>
-                <span className="text-sm font-extrabold text-white">
-                  {state.remotePlayer?.name || (isRemoteConnected ? 'Opponent' : 'Waiting...')}
-                </span>
+        <section className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 shadow-md" aria-label="Opponent status">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex items-center gap-2.5">
+              <span aria-label={`${remoteRole === 'host' ? 'Host' : 'Guest'} ink`} className={cn('w-3 h-3 flex-none rounded-full ring-4', inkClasses(remoteRole))} />
+              <div className="min-w-0">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">Opponent ({remoteRole.toUpperCase()})</span>
+                <span className="text-sm font-extrabold text-white truncate block">{state.remotePlayer?.name || (isRemoteConnected ? 'Opponent' : 'Waiting...')}</span>
               </div>
             </div>
-
-            {isRemoteConnected ? (
-              <span
-                className={cn(
-                  'text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1',
-                  isRemoteReady
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
-                    : 'bg-slate-800 text-slate-400 border-slate-700'
-                )}
-              >
-                {isRemoteReady ? (
-                  <>
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>Ready</span>
-                  </>
-                ) : (
-                  <>
-                    <Clock className="w-3 h-3 text-slate-400" />
-                    <span>Setting Up...</span>
-                  </>
-                )}
-              </span>
-            ) : (
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-950 text-amber-300 border border-amber-800 flex items-center gap-1 animate-pulse">
-                <Clock className="w-3 h-3" />
-                <span>Waiting for opponent</span>
-              </span>
-            )}
-          </div>
-
-          <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex items-center justify-between">
-            <span>Connection:</span>
             <span
-              className={cn(
-                'font-semibold flex items-center gap-1.5',
-                isRemoteConnected ? 'text-emerald-400' : 'text-amber-400'
-              )}
+              className={
+                isRemoteConnected && isRemoteReady
+                  ? 'text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 bg-emerald-950 text-emerald-300 border-emerald-800'
+                  : 'text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 bg-slate-800 text-slate-400 border-slate-700'
+              }
             >
-              <span
-                className={cn(
-                  'w-2 h-2 rounded-full',
-                  isRemoteConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-ping'
-                )}
-              />
-              {isRemoteConnected ? 'Connected via P2P' : 'Awaiting peer connection...'}
+              {isRemoteConnected ? <CheckCircle2 className="w-3 h-3" /> : <Loader2 className="w-3 h-3 animate-spin" />}
+              <span>{isRemoteConnected ? (isRemoteReady ? 'Ready' : 'Setting up') : 'Waiting'}</span>
             </span>
           </div>
-        </div>
+          <div className="pt-2 border-t border-slate-800/80 text-sm text-slate-400 flex items-center justify-between gap-3">
+            <span>Connection</span>
+            <span className={cn('font-semibold', isRemoteConnected ? 'text-emerald-400' : 'text-amber-400')}>
+              {isRemoteConnected ? 'Connected via P2P' : 'Awaiting connection'}
+            </span>
+          </div>
+        </section>
       </div>
 
-      {/* Board Setup & Ready Action */}
-      <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-6">
+      <section className="p-4 sm:p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-6" aria-label="Board setup">
         {isLocalReady ? (
           <div className="space-y-4 text-center py-4">
             <div className="w-12 h-12 rounded-2xl bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-white">Your Board Is Locked & Ready!</h3>
-              <p className="text-xs text-slate-400">
-                {isRemoteReady
-                  ? 'Both players are ready! Match is launching...'
-                  : 'Waiting for opponent to finish board setup and ready up...'}
+              <h2 className="text-xl font-bold text-white">Your Board Is Locked</h2>
+              <p className="text-sm text-slate-400">
+                {isRemoteReady ? 'Both Players are ready. Starting the Match.' : 'Waiting for your opponent to finish.'}
               </p>
             </div>
 
-            {/* Read-only Preview of Local Board */}
-            {state.localPlayer.setupConfig && (
+            {state.localPlayer.setupConfig ? (
               <div className="max-w-xs mx-auto pt-2">
-                <BingoBoardView
-                  board={state.localPlayer.setupConfig}
-                  calledNumbers={[]}
-                  onPickNumber={() => {}}
-                  isMyTurn={false}
-                  disabled={true}
-                />
+                <BingoBoardView board={state.localPlayer.setupConfig} calledNumbers={[]} disabled />
               </div>
-            )}
+            ) : null}
 
-            {!isStarting && (
+            {!isStarting ? (
               <button
                 type="button"
                 onClick={() => setReady(false)}
-                className="text-xs text-amber-400 hover:text-amber-300 font-semibold underline pt-2"
+                className="min-h-11 inline-flex items-center gap-2 px-4 rounded-xl border border-amber-800 text-sm text-amber-300 hover:bg-amber-950/50 font-semibold"
               >
-                Change Board (Cancel Ready)
+                <Pencil className="w-4 h-4" />
+                Edit board
               </button>
-            )}
+            ) : null}
           </div>
         ) : (
           <BingoBoardSetup
             initialBoard={state.localPlayer.setupConfig}
-            onBoardComplete={(board) => {
-              updateBoardSetup(board)
-            }}
+            onBoardComplete={handleBoardReady}
             playerName={state.localPlayer.name}
+            submitLabel="Ready with this board"
           />
         )}
 
-        {/* Ready Action Bar */}
-        <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="text-xs text-slate-400 text-center sm:text-left">
-            {isStarting ? (
-              <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Both players ready! Launching BINGO match...
-              </span>
-            ) : !isRemoteConnected ? (
-              <span>Opponent has not connected yet. You can still arrange your board!</span>
-            ) : !canReady() ? (
-              <span className="text-amber-400 font-medium">
-                Fill all 25 numbers on your board and click "Confirm Board" to ready up.
-              </span>
-            ) : !isLocalReady && isRemoteReady ? (
-              <span className="text-emerald-400 font-bold">
-                Opponent is Ready! Click below to start the match!
-              </span>
-            ) : !isLocalReady ? (
-              <span>Your board is confirmed. Click Ready when you're prepared.</span>
-            ) : (
-              <span>Waiting for opponent to ready up...</span>
-            )}
-          </div>
-
-          {!isLocalReady ? (
-            <button
-              type="button"
-              disabled={!canReady() || isStarting}
-              onClick={() => setReady(true)}
-              className={cn(
-                'w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all',
-                canReady() && !isStarting
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 cursor-pointer active:scale-95'
-                  : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-              )}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{canReady() ? "I'm Ready!" : 'Set Up Board First'}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={isStarting}
-              onClick={() => setReady(false)}
-              className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 active:scale-95 transition-all"
-            >
-              <span>Cancel Ready</span>
-            </button>
-          )}
+        <div className="pt-4 border-t border-slate-800 text-center text-sm text-slate-400" aria-live="polite">
+          {isStarting
+            ? 'Both Players are ready. Starting BINGO.'
+            : !isRemoteConnected
+              ? 'Your friend can join while you arrange your board.'
+              : isLocalReady
+                ? 'Your board is ready. Waiting for your opponent.'
+                : isRemoteReady
+                  ? 'Your opponent is ready. Finish your board when you are set.'
+                  : 'Arrange your board, then mark yourself ready.'}
         </div>
-      </div>
+      </section>
     </div>
   )
 }

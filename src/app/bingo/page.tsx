@@ -38,7 +38,7 @@ function BingoContent() {
       <div className="flex items-center justify-between">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+          className="min-h-11 inline-flex items-center gap-2 px-2 text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>All Games</span>
@@ -47,7 +47,7 @@ function BingoContent() {
           <button
             type="button"
             onClick={handleExitToHub}
-            className="text-xs text-slate-400 hover:text-slate-200 underline font-medium"
+            className="min-h-11 px-2 text-sm text-slate-400 hover:text-slate-200 underline font-medium"
           >
             Change Mode
           </button>
@@ -66,46 +66,38 @@ function BingoContent() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Pass & Play / Local Mode */}
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between text-left space-y-4 shadow-xl">
-              <div className="space-y-2">
-                <div className="w-10 h-10 rounded-xl bg-indigo-950 text-indigo-400 border border-indigo-800/80 flex items-center justify-center font-bold">
-                  <Play className="w-5 h-5" />
+          <div className="space-y-3">
+            <section className="p-6 sm:p-8 rounded-3xl bg-gradient-to-b from-indigo-950/60 to-slate-900 border border-indigo-700/50 text-left space-y-5 shadow-xl">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-none">
+                  <Globe className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-white">Pass & Play</h3>
-                <p className="text-xs text-slate-400">
-                  Play locally on this device with a friend, taking turns on the same screen.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMode('local')}
-                className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-md transition-all active:scale-95"
-              >
-                Play Local Match
-              </button>
-            </div>
-
-            {/* P2P Multiplayer Mode */}
-            <div className="p-6 rounded-3xl bg-gradient-to-b from-indigo-950/40 to-slate-900/80 border border-indigo-800/40 flex flex-col justify-between text-left space-y-4 shadow-xl">
-              <div className="space-y-2">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
-                  <Globe className="w-5 h-5" />
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-bold text-white">Play online with a friend</h2>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    Create a Match, share the invite, and play together from separate phones.
+                  </p>
                 </div>
-                <h3 className="text-xl font-bold text-white">P2P Online Match</h3>
-                <p className="text-xs text-slate-400">
-                  Create a Match, send an invite link to your friend, and connect browser-to-browser.
-                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setMode('online-host')}
-                className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm text-center block shadow-md transition-all active:scale-95"
+                data-priority="primary"
+                className="min-h-12 w-full px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-base text-center shadow-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
               >
                 Create Online Match
               </button>
-            </div>
+            </section>
+
+            <button
+              type="button"
+              onClick={() => setMode('local')}
+              data-priority="secondary"
+              className="min-h-11 w-full inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            >
+              <Play className="w-4 h-4" />
+              Pass & Play on this device
+            </button>
           </div>
 
           {/* Quick Rules */}
