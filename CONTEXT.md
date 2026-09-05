@@ -28,6 +28,18 @@ _Avoid_: Client, Joiner, Peer 2
 A discrete, serializable action submitted by a Player and validated by the Game engine.
 _Avoid_: Action, Turn event, Command, Packet
 
+**BINGO Board**:
+A private 5x5 arrangement of the numbers 1 through 25 belonging to one Player in a BINGO Match.
+_Avoid_: Card, Grid, Ticket
+
+**Call**:
+The number chosen by the active Player during a BINGO Move and applied to both BINGO Boards.
+_Avoid_: Pick, Selected number, Draw
+
+**Pass**:
+The end of a BINGO turn without a Call, chosen voluntarily or caused by the turn timer expiring.
+_Avoid_: Skip, Missed Move, Forfeit
+
 **Lobby**:
 The pre-game coordination view where Players connect, ready up, and configure a Match before starting.
 _Avoid_: Waiting room, Staging area
