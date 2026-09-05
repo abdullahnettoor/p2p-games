@@ -109,7 +109,11 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
           : null
 
       const newStatus: LobbyStatus =
-        this.transport.status === 'connected' ? 'connected' : 'waiting'
+        this.transport.status === 'connected'
+          ? 'connected'
+          : this.transport.role === 'host'
+            ? 'waiting'
+            : 'connecting'
 
       this.state = {
         ...this.state,

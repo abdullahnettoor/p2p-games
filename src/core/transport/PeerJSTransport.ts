@@ -37,6 +37,7 @@ export class PeerJSTransport implements ITransport {
   private peerInstance: any = null
   private connection: any = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   private lastMessageTimestamp = 0
 
   private messageHandlers = new Set<TransportEventHandler>()
@@ -68,6 +69,19 @@ export class PeerJSTransport implements ITransport {
     return new Promise<string>((resolve, reject) => {
       let isResolved = false
 
+      const signalingTimeout = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true
+          const err = new Error('Signaling connection timed out. Please check your network connection.')
+          this.notifyError(err)
+          reject(err)
+        }
+      }, 15000)
+
+      const cleanupSignalingTimeout = () => {
+        clearTimeout(signalingTimeout)
+      }
+
       try {
         const peer = this.localPlayerId
           ? new Peer(this.localPlayerId, {
@@ -80,47 +94,45 @@ export class PeerJSTransport implements ITransport {
         this.peerInstance = peer
 
         peer.on('open', (assignedId: string) => {
+          cleanupSignalingTimeout()
           this.localPlayerId = assignedId
 
-          if (this.role === 'host') {
-            // Host is registered and now waiting for incoming player connection
-            isResolved = true
-            resolve(assignedId)
-          } else {
-            // Guest initiates connection to host and waits until data channel is open
+          if (this.role === 'guest') {
             if (!this.targetPeerId) {
               const err = new Error('Guest transport requires a targetPeerId')
               this.notifyError(err)
-              reject(err)
-              return
-            }
-            const conn = peer.connect(this.targetPeerId, { reliable: true })
-            this.setupConnection(conn, () => {
-              if (!isResolved) {
-                isResolved = true
-                resolve(assignedId)
-              }
-            }, (err) => {
               if (!isResolved) {
                 isResolved = true
                 reject(err)
               }
-            })
+              return
+            }
+            this.startConnectionTimeout()
+            const conn = peer.connect(this.targetPeerId)
+            this.setupConnection(conn)
+          }
+
+          if (!isResolved) {
+            isResolved = true
+            resolve(assignedId)
           }
         })
 
         peer.on('connection', (conn: any) => {
           if (this.role === 'host') {
-            // If already connected to someone else, reject incoming connection
-            if (this.connection && this.status === 'connected') {
-              conn.close()
-              return
+            if (this.connection && this.connection !== conn) {
+              try {
+                this.connection.close()
+              } catch {
+                // ignore
+              }
             }
             this.setupConnection(conn)
           }
         })
 
         peer.on('error', (err: any) => {
+          cleanupSignalingTimeout()
           const error = err instanceof Error ? err : new Error(String(err))
           this.notifyError(error)
           if (!isResolved && this.status === 'connecting') {
@@ -141,9 +153,11 @@ export class PeerJSTransport implements ITransport {
         })
 
         peer.on('close', () => {
+          cleanupSignalingTimeout()
           this.disconnect()
         })
       } catch (err) {
+        cleanupSignalingTimeout()
         const error = err instanceof Error ? err : new Error(String(err))
         this.notifyError(error)
         reject(error)
@@ -158,13 +172,20 @@ export class PeerJSTransport implements ITransport {
   ): void {
     this.connection = conn
 
-    conn.on('open', () => {
+    const handleOpen = () => {
+      this.stopConnectionTimeout()
       this.remotePlayerId = conn.peer
       this.setStatus('connected')
       this.notifyPlayerJoin(conn.peer)
       this.startHeartbeat()
       onOpenCallback?.()
-    })
+    }
+
+    if (conn.open) {
+      handleOpen()
+    } else {
+      conn.on('open', handleOpen)
+    }
 
     conn.on('data', (data: any) => {
       this.lastMessageTimestamp = Date.now()
@@ -180,6 +201,7 @@ export class PeerJSTransport implements ITransport {
     })
 
     conn.on('close', () => {
+      this.stopConnectionTimeout()
       const prevRemote = this.remotePlayerId
       this.remotePlayerId = null
       this.connection = null
@@ -193,6 +215,7 @@ export class PeerJSTransport implements ITransport {
     })
 
     conn.on('error', (err: any) => {
+      this.stopConnectionTimeout()
       const error = err instanceof Error ? err : new Error(String(err))
       this.notifyError(error)
       onErrorCallback?.(error)
@@ -240,6 +263,7 @@ export class PeerJSTransport implements ITransport {
 
   public disconnect(): void {
     this.stopHeartbeat()
+    this.stopConnectionTimeout()
 
     const prevRemote = this.remotePlayerId
     this.setStatus('closed')
@@ -265,6 +289,25 @@ export class PeerJSTransport implements ITransport {
 
     if (prevRemote) {
       this.notifyPlayerLeave(prevRemote)
+    }
+  }
+
+  private startConnectionTimeout(): void {
+    this.stopConnectionTimeout()
+    this.connectionTimeoutTimer = setTimeout(() => {
+      if (this.status !== 'connected') {
+        const error = new Error(
+          'Connecting to host timed out. Please verify that the host is online and the invite link is correct.'
+        )
+        this.notifyError(error)
+      }
+    }, 20000)
+  }
+
+  private stopConnectionTimeout(): void {
+    if (this.connectionTimeoutTimer) {
+      clearTimeout(this.connectionTimeoutTimer)
+      this.connectionTimeoutTimer = null
     }
   }
 
