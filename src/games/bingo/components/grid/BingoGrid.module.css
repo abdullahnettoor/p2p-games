@@ -9,6 +9,13 @@
   background: var(--bingo-rule);
 }
 
+.heightSized {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
 .gridSurface {
   display: grid;
   width: 100%;

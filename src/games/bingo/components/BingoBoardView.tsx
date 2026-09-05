@@ -16,6 +16,7 @@ interface BingoBoardViewProps {
   isMyTurn?: boolean
   onPickNumber?: (num: number) => void
   disabled?: boolean
+  sizeMode?: 'width' | 'height'
   className?: string
 }
 
@@ -90,6 +91,7 @@ export const BingoBoardView: React.FC<BingoBoardViewProps> = ({
   isMyTurn = false,
   onPickNumber = () => {},
   disabled = false,
+  sizeMode = 'width',
   className,
 }) => {
   const callByNumber = useMemo(
@@ -143,6 +145,7 @@ export const BingoBoardView: React.FC<BingoBoardViewProps> = ({
       className={className}
       testId="bingo-board"
       ariaDescribedBy={lineSummaryId}
+      sizeMode={sizeMode}
       getCellProps={({ index }) => {
         const { cellLabel, isCalled } = getCellState(index)
         return {

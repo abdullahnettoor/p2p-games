@@ -53,6 +53,8 @@ export type TransportMessage =
   | { type: 'profile'; payload: ProfileMessagePayload }
   | { type: 'match_start'; payload: MatchStartMessagePayload }
   | { type: 'sync'; payload: SyncMessagePayload }
+  | { type: 'forfeit'; payload: { playerId: string } }
+  | { type: 'forfeit_ack'; payload: { playerId: string } }
 
 export type TransportEventHandler<T = TransportMessage> = (message: T) => void
 export type StatusChangeHandler = (status: TransportStatus) => void

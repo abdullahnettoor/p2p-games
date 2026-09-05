@@ -16,6 +16,7 @@ export interface BingoGridProps {
   className?: string
   testId?: string
   ariaDescribedBy?: string
+  sizeMode?: 'width' | 'height'
   children?: React.ReactNode
 }
 
@@ -26,9 +27,10 @@ export const BingoGrid: React.FC<BingoGridProps> = ({
   className,
   testId,
   ariaDescribedBy,
+  sizeMode = 'width',
   children,
 }) => (
-  <div className={cn('bingoTokenScope', styles.gridFrame, className)}>
+  <div className={cn('bingoTokenScope', styles.gridFrame, sizeMode === 'height' && styles.heightSized, className)}>
     <div
       role="grid"
       aria-label={ariaLabel}

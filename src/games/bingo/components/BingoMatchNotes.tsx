@@ -6,6 +6,7 @@ import styles from './BingoMatchNotes.module.css'
 export interface BingoMatchNotesProps {
   history: BingoTurnEvent[]
   playersById: Record<string, BingoPlayerInk>
+  open?: boolean
   className?: string
 }
 
@@ -17,10 +18,11 @@ function eventLabel(event: BingoTurnEvent, player: BingoPlayerInk): string {
 export const BingoMatchNotes: React.FC<BingoMatchNotesProps> = ({
   history,
   playersById,
+  open = false,
   className,
 }) => {
   return (
-    <details className={`${styles.matchNotes} ${className ?? ''}`.trim()}>
+    <details open={open} className={`${styles.matchNotes} ${className ?? ''}`.trim()}>
       <summary className={styles.matchNotesSummary}>Match notes</summary>
       <ol className={styles.matchNotesList} aria-label="Complete Match history">
         {history.length === 0 ? (

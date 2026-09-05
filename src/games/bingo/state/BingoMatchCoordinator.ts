@@ -74,6 +74,7 @@ export class BingoMatchCoordinator {
   private listeners = new Set<() => void>()
   private reactionListeners = new Set<(reaction: BingoReaction) => void>()
   private unsubscribers: Array<() => void> = []
+  private pendingForfeitResolve: (() => void) | null = null
 
   public static getCachedMatch(): CachedBingoMatch | null {
     if (typeof window === 'undefined' || !window.localStorage) return null
@@ -244,6 +245,21 @@ export class BingoMatchCoordinator {
           }
         } else if (message.type === 'sync') {
           this.reconcileState(message.payload.state)
+        } else if (message.type === 'forfeit') {
+          if (message.payload.playerId === this.state.remotePlayer.id) {
+            this.applyForfeit(message.payload.playerId)
+            if (this.transport.status === 'connected') {
+              this.transport.send({
+                type: 'forfeit_ack',
+                payload: { playerId: message.payload.playerId },
+              })
+            }
+          }
+        } else if (message.type === 'forfeit_ack') {
+          if (message.payload.playerId === this.state.localPlayer.id) {
+            this.pendingForfeitResolve?.()
+            this.pendingForfeitResolve = null
+          }
         }
       })
 
@@ -423,6 +439,41 @@ export class BingoMatchCoordinator {
     return this.submitPass('voluntary')
   }
 
+  public async forfeit(): Promise<void> {
+    if (this.state.gameState.status !== 'active') return
+
+    if (this.transport.status !== 'connected') {
+      this.applyForfeit(this.state.localPlayer.id)
+      return
+    }
+
+    let acknowledgedSynchronously = false
+    const acknowledgement = new Promise<void>((resolve) => {
+      this.pendingForfeitResolve = () => {
+        acknowledgedSynchronously = true
+        resolve()
+      }
+    })
+
+    try {
+      this.transport.send({
+        type: 'forfeit',
+        payload: { playerId: this.state.localPlayer.id },
+      })
+    } catch {
+      this.pendingForfeitResolve = null
+    }
+
+    if (!acknowledgedSynchronously) {
+      await Promise.race([
+        acknowledgement,
+        new Promise<void>((resolve) => setTimeout(resolve, 500)),
+      ])
+    }
+    this.pendingForfeitResolve = null
+    this.applyForfeit(this.state.localPlayer.id)
+  }
+
   private submitPass(reason: 'voluntary' | 'timeout'): boolean {
     return this.submitBingoMove({
       type: 'PASS',
@@ -524,6 +575,38 @@ export class BingoMatchCoordinator {
     }
   }
 
+  private applyForfeit(forfeitingPlayerId: string): void {
+    if (this.state.gameState.status !== 'active') return
+    const winnerId = forfeitingPlayerId === this.state.localPlayer.id
+      ? this.state.remotePlayer.id
+      : this.state.localPlayer.id
+    const forfeitResult: WinResult = {
+      isGameOver: true,
+      winnerId,
+      reason: 'forfeit',
+    }
+
+    this.stopTurnTimer()
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    this.state = {
+      ...this.state,
+      isReconnecting: false,
+      reconnectSecondsRemaining: 0,
+      gameState: {
+        ...this.state.gameState,
+        status: 'completed',
+        winnerId,
+      },
+      winResult: forfeitResult,
+    }
+    BingoMatchCoordinator.clearCachedMatch()
+    this.notify()
+    this.onGameOver?.(forfeitResult)
+  }
+
   private handleReconnectionTimeout(): void {
     if (this.reconnectTimer) {
       clearInterval(this.reconnectTimer)
@@ -610,6 +693,8 @@ export class BingoMatchCoordinator {
   }
 
   public destroy(): void {
+    this.pendingForfeitResolve?.()
+    this.pendingForfeitResolve = null
     this.stopTurnTimer()
     this.stopReconnectionCountdown()
     this.unsubscribers.forEach((unsub) => unsub())
