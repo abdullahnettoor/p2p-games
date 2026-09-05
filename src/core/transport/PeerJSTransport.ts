@@ -21,6 +21,14 @@ export interface PeerJSTransportOptions {
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
+  {
+    urls: [
+      'turn:eu-0.turn.peerjs.com:3478',
+      'turn:us-0.turn.peerjs.com:3478',
+    ],
+    username: 'peerjs',
+    credential: 'peerjsp',
+  },
 ]
 
 export class PeerJSTransport implements ITransport {
@@ -133,7 +141,14 @@ export class PeerJSTransport implements ITransport {
 
         peer.on('error', (err: any) => {
           cleanupSignalingTimeout()
-          const error = err instanceof Error ? err : new Error(String(err))
+          this.stopConnectionTimeout()
+
+          let errorMsg = err instanceof Error ? err.message : String(err)
+          if (err?.type === 'peer-unavailable' || errorMsg.includes('Could not connect to peer')) {
+            errorMsg = 'Match not found or the host has disconnected. Please verify you have the latest invite link from the host.'
+          }
+
+          const error = new Error(errorMsg)
           this.notifyError(error)
           if (!isResolved && this.status === 'connecting') {
             isResolved = true
@@ -216,7 +231,11 @@ export class PeerJSTransport implements ITransport {
 
     conn.on('error', (err: any) => {
       this.stopConnectionTimeout()
-      const error = err instanceof Error ? err : new Error(String(err))
+      let errorMsg = err instanceof Error ? err.message : String(err)
+      if (err?.type === 'peer-unavailable' || errorMsg.includes('Could not connect to peer')) {
+        errorMsg = 'Match not found or the host has disconnected. Please verify you have the latest invite link from the host.'
+      }
+      const error = new Error(errorMsg)
       this.notifyError(error)
       onErrorCallback?.(error)
     })

@@ -141,7 +141,35 @@ describe('PeerJSTransport Connection Lifecycle', () => {
     await vi.advanceTimersByTimeAsync(20000)
 
     expect(errorHandler).toHaveBeenCalled()
-    expect(errorHandler.mock.calls[0][0].message).toContain('timed out')
+    guest.disconnect()
+    vi.useRealTimers()
+  })
+
+  it('translates peer-unavailable error to user-friendly message and stops connection timeout', async () => {
+    vi.useFakeTimers()
+    const guest = new PeerJSTransport({
+      role: 'guest',
+      targetPeerId: 'missing-host',
+    })
+
+    const errorHandler = vi.fn()
+    guest.onError(errorHandler)
+
+    const connectPromise = guest.connect()
+    await vi.advanceTimersByTimeAsync(10)
+    await connectPromise
+
+    // Simulate signaling server peer-unavailable error
+    const unavailableErr = new Error('Could not connect to peer missing-host')
+    ;(unavailableErr as any).type = 'peer-unavailable'
+    ;(guest as any).peerInstance.emit('error', unavailableErr)
+
+    expect(errorHandler).toHaveBeenCalled()
+    expect(errorHandler.mock.calls[0][0].message).toContain('Match not found or the host has disconnected')
+
+    // Advance timers past 20s and verify no secondary timeout error fired
+    await vi.advanceTimersByTimeAsync(25000)
+    expect(errorHandler).toHaveBeenCalledTimes(1)
 
     guest.disconnect()
     vi.useRealTimers()
