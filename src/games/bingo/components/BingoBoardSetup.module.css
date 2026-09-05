@@ -1,0 +1,41 @@
+.setup {
+  display: flex;
+  width: 100%;
+  max-width: 30rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-inline: auto;
+  color: var(--bingo-graphite);
+}
+
+.heading { margin: 0; font-size: clamp(1.1rem, 5vw, 1.45rem); font-weight: 800; text-align: center; }
+.instructions { margin: 0; color: var(--bingo-graphite-muted); font-size: 0.82rem; line-height: 1.35; text-align: center; }
+.toolbar { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.toolGroup { display: flex; align-items: center; gap: 0.35rem; }
+.toolButton, .submitButton { min-height: 2.25rem; border-radius: 0.5rem; font-family: var(--bingo-font-label); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; }
+.toolButton { display: inline-flex; min-width: 2.25rem; align-items: center; justify-content: center; gap: 0.35rem; border: 1px solid var(--bingo-rule); padding-inline: 0.65rem; background: var(--bingo-paper-raised); color: var(--bingo-graphite); }
+.toolButton:hover:not(:disabled) { border-color: var(--bingo-graphite); background: var(--bingo-cell-hover); }
+.toolButton:disabled, .submitButton:disabled { cursor: not-allowed; opacity: 0.45; }
+.toolButton:focus-visible, .submitButton:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
+.progress { color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.7rem; font-weight: 700; text-align: right; }
+.progress strong { display: block; color: var(--bingo-warning); font-size: 0.82rem; }
+.progress[data-complete="true"] strong { color: var(--bingo-host-ink); }
+.swapHint { min-height: 1.25rem; margin: 0; color: var(--bingo-graphite-muted); font-size: 0.75rem; text-align: center; }
+.swapHint[data-selected="true"] { color: var(--bingo-warning); }
+.submitButton { display: inline-flex; width: 100%; align-items: center; justify-content: center; gap: 0.4rem; border: 1px solid var(--bingo-graphite); padding-inline: 1rem; background: var(--bingo-graphite); color: var(--bingo-paper-raised); }
+.submitButton:hover:not(:disabled) { background: #3b4a53; }
+.submitButton:disabled { border-color: var(--bingo-rule); background: var(--bingo-rule-soft); color: var(--bingo-graphite-muted); }
+.boardGrid { max-width: 30rem; }
+
+@media (max-width: 22.5rem) {
+  .setup { gap: 0.35rem; }
+  .heading { font-size: 1rem; }
+  .instructions { font-size: 0.72rem; }
+  .toolbar { min-height: 2.25rem; }
+  .toolButton, .submitButton { min-height: 2.25rem; }
+  .toolButton { padding-inline: 0.5rem; }
+  .toolButton span { display: none; }
+  .boardGrid { width: 14rem; max-width: 14rem; }
+  .swapHint { min-height: 1rem; font-size: 0.68rem; }
+}

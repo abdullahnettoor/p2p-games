@@ -71,6 +71,6 @@ describe('BingoBoardSetup', () => {
 
     expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
     expect(screen.getAllByRole('gridcell')).toHaveLength(25)
-    expect(screen.getByRole('button', { name: 'Shuffle board' })).toHaveClass('min-h-11')
+    expect(screen.getByRole('button', { name: 'Shuffle board' }).className).toMatch(/toolButton/)
   })
 })

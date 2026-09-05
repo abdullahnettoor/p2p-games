@@ -7,18 +7,25 @@ import { createLoopbackTransportPair } from '@/core/transport/LoopbackTransport'
 import { validateBingoBoard } from '../engine'
 import { BingoBoard } from '../types'
 
-vi.mock('qrcode', () => ({
-  toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,test-qr'),
-}))
+function makeSessionState(overrides: Partial<LobbySession<BingoBoard>['state']> = {}) {
+  return {
+    status: 'error' as const,
+    localPlayer: {
+      id: 'host', name: 'HostPlayer', role: 'host' as const, isReady: false, connected: true,
+    },
+    remotePlayer: null,
+    inviteUrl: null,
+    error: 'Signaling connection timed out. Try again.',
+    ...overrides,
+  }
+}
 
 describe('BingoMatchLobby', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     Object.assign(navigator, {
       share: vi.fn().mockResolvedValue(undefined),
-      clipboard: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
     })
   })
 
@@ -34,7 +41,7 @@ describe('BingoMatchLobby', () => {
     return session
   }
 
-  it('keeps connection and both Player identities visible during setup', async () => {
+  async function createConnectedSessions() {
     const [hostTransport, guestTransport] = createLoopbackTransportPair()
     const hostSession = new LobbySession<BingoBoard>({
       transport: hostTransport,
@@ -47,24 +54,43 @@ describe('BingoMatchLobby', () => {
       playerName: 'GuestPlayer',
       validateSetup: (board) => validateBingoBoard(board).valid,
     })
-
     await hostSession.start()
     await guestSession.start()
+    return { hostSession, guestSession }
+  }
+
+  it('uses one connection line instead of Player cards and keeps setup visible', async () => {
+    const { hostSession } = await createConnectedSessions()
     render(<BingoMatchLobby session={hostSession} />)
 
-    expect(screen.getByText('HostPlayer')).toBeInTheDocument()
-    expect(screen.getByText('GuestPlayer')).toBeInTheDocument()
-    expect(screen.getByText(/Connected via P2P/i)).toBeInTheDocument()
-    expect(screen.getByLabelText('Host ink')).toBeInTheDocument()
-    expect(screen.getByLabelText('Guest ink')).toBeInTheDocument()
+    expect(screen.getByLabelText('Your name')).toHaveValue('HostPlayer')
+    expect(screen.getByText(/Connected ·/i)).toBeInTheDocument()
+    expect(screen.getByText(/Connected ·/i)).toBeInTheDocument()
+    expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
+    expect(screen.queryByText('Opponent')).not.toBeInTheDocument()
   })
 
-  it('shares the invite through the native share sheet', async () => {
+  it('keeps the preparing invite quiet while the Board is already interactive', () => {
+    const [hostTransport] = createLoopbackTransportPair()
+    const session = new LobbySession<BingoBoard>({
+      transport: hostTransport,
+      playerName: 'HostPlayer',
+      inviteUrlGenerator: (id) => `https://game.test/bingo?match=${id}`,
+      validateSetup: (board) => validateBingoBoard(board).valid,
+    })
+    render(<BingoMatchLobby session={session} />)
+
+    expect(screen.getByText('Preparing invite')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Preparing invite/ })).toBeDisabled()
+    expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
+  })
+
+  it('shares the invite through the native share sheet from the invite pill', async () => {
     const session = await createHostSession()
     render(<BingoMatchLobby session={session} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Share invite' }))
+      fireEvent.click(screen.getByRole('button', { name: /Invite a friend/ }))
     })
 
     expect(navigator.share).toHaveBeenCalledWith({
@@ -81,7 +107,7 @@ describe('BingoMatchLobby', () => {
     render(<BingoMatchLobby session={session} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Share invite' }))
+      fireEvent.click(screen.getByRole('button', { name: /Invite a friend/ }))
     })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(session.state.inviteUrl)
@@ -89,21 +115,19 @@ describe('BingoMatchLobby', () => {
   })
 
   it('falls back to copying when native sharing fails', async () => {
-    Object.assign(navigator, {
-      share: vi.fn().mockRejectedValue(new Error('share unavailable')),
-    })
+    Object.assign(navigator, { share: vi.fn().mockRejectedValue(new Error('share unavailable')) })
     const session = await createHostSession()
     render(<BingoMatchLobby session={session} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Share invite' }))
+      fireEvent.click(screen.getByRole('button', { name: /Invite a friend/ }))
     })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(session.state.inviteUrl)
     expect(screen.getByText('Invite link copied')).toBeInTheDocument()
   })
 
-  it('shows an actionable error when the invite cannot be copied', async () => {
+  it('shows an actionable fallback link when sharing and copying both fail', async () => {
     Object.assign(navigator, {
       share: undefined,
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
@@ -112,35 +136,51 @@ describe('BingoMatchLobby', () => {
     render(<BingoMatchLobby session={session} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Share invite' }))
+      fireEvent.click(screen.getByRole('button', { name: /Invite a friend/ }))
     })
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Select the link and copy it manually')
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not share automatically')
+    expect(screen.getByRole('link')).toHaveAttribute('href', session.state.inviteUrl)
   })
 
-  it('shows an optional QR code without blocking board setup', async () => {
-    const session = await createHostSession()
+  it('shows an actionable failure reason and retries without removing the board', async () => {
+    const retry = vi.fn().mockResolvedValue(undefined)
+    const session = {
+      state: makeSessionState(),
+      subscribe: () => () => {},
+      updatePlayerName: vi.fn(),
+      updateBoardSetup: vi.fn(),
+      setReady: vi.fn(),
+      retry,
+    } as unknown as LobbySession<BingoBoard>
     render(<BingoMatchLobby session={session} />)
 
+    expect(screen.getByText(/Signaling connection timed out/i)).toBeInTheDocument()
+    expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Show QR code' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Retry invite connection' }))
     })
-
-    expect(await screen.findByRole('img', { name: 'QR code for the Match invite' })).toHaveAttribute(
-      'src',
-      'data:image/png;base64,test-qr'
-    )
-    expect(screen.getByText('Place 1')).toBeInTheDocument()
+    expect(retry).toHaveBeenCalledTimes(1)
   })
 
-  it('allows customizing the Player display name', async () => {
+  it('shows the Guest layout without an invite pill', async () => {
+    const { guestSession } = await createConnectedSessions()
+    render(<BingoMatchLobby session={guestSession} />)
+
+    expect(screen.queryByRole('region', { name: 'Match invite' })).not.toBeInTheDocument()
+    expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
+    expect(screen.getByText(/Connected ·/i)).toBeInTheDocument()
+  })
+
+  it('opens the variant-specific rules sheet', async () => {
     const session = await createHostSession()
     render(<BingoMatchLobby session={session} />)
 
-    const nameInput = screen.getByLabelText(/your display name/i)
-    fireEvent.change(nameInput, { target: { value: 'CaptainBingo' } })
-
-    expect(session.state.localPlayer.name).toBe('CaptainBingo')
+    fireEvent.click(screen.getByRole('button', { name: 'Bingo rules' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('BINGO Sunday Puzzle')
+    expect(screen.getByText('Two-player online variant')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close Bingo rules' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('combines board completion and readiness in one action', async () => {
@@ -152,7 +192,7 @@ describe('BingoMatchLobby', () => {
 
     expect(session.state.localPlayer.setupConfig).toHaveLength(25)
     expect(session.state.localPlayer.isReady).toBe(true)
-    expect(screen.getByText(/Your Board Is Locked/i)).toBeInTheDocument()
+    expect(screen.getByText(/Board ready/i)).toBeInTheDocument()
   })
 
   it('cancels readiness before reopening a board for editing', async () => {
@@ -161,7 +201,7 @@ describe('BingoMatchLobby', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shuffle board' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ready with this board' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit board' }))
+    fireEvent.click(screen.getByRole('button', { name: /Edit Board/i }))
 
     expect(session.state.localPlayer.isReady).toBe(false)
     expect(screen.getByText('All 25 placed')).toBeInTheDocument()
@@ -197,8 +237,6 @@ describe('BingoMatchLobby', () => {
     render(<BingoMatchLobby session={hostSession} />)
     fireEvent.click(screen.getByRole('button', { name: 'Ready with this board' }))
 
-    await waitFor(() => {
-      expect(onMatchStart).toHaveBeenCalled()
-    })
+    await waitFor(() => expect(onMatchStart).toHaveBeenCalled())
   })
 })

@@ -213,6 +213,7 @@ export class PeerJSTransport implements ITransport {
         })
 
         peer.on('error', (err: any) => {
+          if (this.peerInstance !== peer) return
           cleanupSignalingTimeout()
           this.stopConnectionTimeout()
 
@@ -240,6 +241,7 @@ export class PeerJSTransport implements ITransport {
         })
 
         peer.on('close', () => {
+          if (this.peerInstance !== peer) return
           cleanupSignalingTimeout()
           this.disconnect()
         })
@@ -359,6 +361,31 @@ export class PeerJSTransport implements ITransport {
   public onError(handler: ErrorEventHandler): () => void {
     this.errorHandlers.add(handler)
     return () => this.errorHandlers.delete(handler)
+  }
+
+  public async retryConnect(): Promise<string> {
+    this.stopHeartbeat()
+    this.stopConnectionTimeout()
+    const previousPeer = this.peerInstance
+    const previousConnection = this.connection
+    this.peerInstance = null
+    this.connection = null
+    this.remotePlayerId = null
+    this.status = 'disconnected'
+    this.isDestroyed = false
+
+    try {
+      previousConnection?.close()
+    } catch {
+      // Ignore the old connection while replacing it.
+    }
+    try {
+      previousPeer?.destroy()
+    } catch {
+      // Ignore the old Peer while replacing it.
+    }
+
+    return this.connect()
   }
 
   public disconnect(): void {

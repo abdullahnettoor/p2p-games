@@ -1,0 +1,154 @@
+.lobbySurface {
+  display: flex;
+  min-height: 100dvh;
+  width: 100%;
+  flex-direction: column;
+  padding: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 13% 17%, rgba(39, 49, 58, 0.035) 0 0.6px, transparent 0.8px),
+    radial-gradient(circle at 84% 72%, rgba(39, 49, 58, 0.025) 0 0.7px, transparent 0.9px),
+    var(--bingo-desk);
+  background-size: 37px 41px, 53px 47px, auto;
+  color: var(--bingo-graphite);
+}
+
+.lobbyInner {
+  width: min(100%, 34rem);
+  flex: 1;
+  margin-inline: auto;
+}
+
+.utilityBar {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.utilityGroup { display: flex; align-items: center; gap: 0.5rem; }
+
+.utilityButton,
+.rulesButton {
+  display: inline-flex;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid var(--bingo-rule-strong);
+  border-radius: 0.5rem;
+  padding-inline: 0.65rem;
+  background: var(--bingo-paper-overlay);
+  color: var(--bingo-graphite);
+  font-family: var(--bingo-font-label);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.utilityButton:hover,
+.rulesButton:hover { border-color: var(--bingo-graphite); background: var(--bingo-paper-raised); }
+.utilityButton:focus-visible,
+.rulesButton:focus-visible,
+.invitePill:focus-visible,
+.nameInput:focus-visible,
+.rulesClose:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
+
+.shellTitle {
+  margin: 0;
+  font-size: clamp(1.35rem, 7vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.inviteArea { min-height: 2.75rem; margin-bottom: 0.5rem; }
+.invitePill {
+  display: flex;
+  width: 100%;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--bingo-rule);
+  border-radius: 999px;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  background: var(--bingo-paper-overlay);
+  color: var(--bingo-graphite);
+  text-align: left;
+}
+.invitePill[data-ready="true"] { border-color: var(--bingo-host-ink); color: var(--bingo-host-ink); cursor: pointer; }
+.invitePill[data-error="true"] { border-color: var(--bingo-urgent); color: var(--bingo-urgent); }
+.invitePill:disabled { cursor: default; opacity: 0.9; }
+.inviteCopy { min-width: 0; }
+.inviteLabel { display: block; font-family: var(--bingo-font-label); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.inviteReason { display: block; overflow: hidden; margin-top: 0.15rem; color: var(--bingo-graphite-muted); font-size: 0.78rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.invitePill[data-error="true"] .inviteReason { color: var(--bingo-urgent); white-space: normal; }
+.inviteAction { flex: 0 0 auto; font-family: var(--bingo-font-label); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.inviteFeedback { margin: 0.3rem 0 0 1rem; color: var(--bingo-host-ink); font-size: 0.75rem; line-height: 1.35; }
+.inviteLink { overflow-wrap: anywhere; color: var(--bingo-urgent); }
+.inviteFeedback[data-error="true"] { color: var(--bingo-urgent); }
+
+
+.connectionLine {
+  min-height: 2.25rem;
+  margin-bottom: 0.5rem;
+  border-block: 1px solid var(--bingo-rule-soft);
+  padding: 0.55rem 0.25rem;
+  color: var(--bingo-graphite-muted);
+  font-size: 0.8rem;
+  line-height: 1.25;
+  text-align: center;
+}
+.connectionLine strong { color: var(--bingo-graphite); }
+.connectionLine[data-connected="true"] strong { color: var(--bingo-host-ink); }
+.connectionRetry { min-height: 2.25rem; margin-left: 0.5rem; border: 1px solid var(--bingo-urgent); border-radius: 0.5rem; padding-inline: 0.6rem; background: var(--bingo-paper-raised); color: var(--bingo-urgent); font-family: var(--bingo-font-label); font-size: 0.68rem; font-weight: 800; text-transform: uppercase; }
+.connectionRetry:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
+
+.boardSheet {
+  border: 1px solid var(--bingo-paper-shadow);
+  border-radius: 0.875rem;
+  padding: clamp(0.7rem, 3vw, 1.25rem);
+  background: var(--bingo-paper);
+  box-shadow: 0 18px 50px var(--bingo-sheet-shadow-strong), 0 2px 5px var(--bingo-sheet-shadow-soft);
+}
+
+.identityRow { display: flex; align-items: end; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; }
+.identityLabel { display: block; margin-bottom: 0.3rem; color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.nameInput { width: min(100%, 14rem); min-height: 2.25rem; border: 0; border-bottom: 2px solid var(--bingo-rule); border-radius: 0; padding: 0.25rem 0; background: transparent; color: var(--bingo-graphite); font-size: 1rem; font-weight: 800; }
+.nameInput:disabled { opacity: 0.7; }
+.readyMark { color: var(--bingo-host-ink); font-family: var(--bingo-font-label); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+
+
+.lockedBoard { display: grid; gap: 0.75rem; justify-items: center; }
+.lockedHeading { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: 1rem; }
+.lockedCopy { margin: 0; color: var(--bingo-graphite-muted); font-size: 0.82rem; text-align: center; }
+.editButton { display: inline-flex; min-height: 2.25rem; align-items: center; gap: 0.4rem; border: 1px solid var(--bingo-warning); border-radius: 0.5rem; padding-inline: 0.75rem; background: transparent; color: var(--bingo-warning); font-family: var(--bingo-font-label); font-size: 0.7rem; font-weight: 800; text-transform: uppercase; }
+.editButton:hover { background: color-mix(in srgb, var(--bingo-warning) 8%, transparent); }
+
+.rulesSheet { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(39, 49, 58, 0.38); }
+.rulesPanel { width: min(100%, 27rem); border: 1px solid var(--bingo-paper-shadow); border-radius: 0.875rem; padding: 1.25rem; background: var(--bingo-paper); color: var(--bingo-graphite); box-shadow: 0 18px 50px var(--bingo-sheet-shadow-strong); }
+.rulesHeader { display: flex; align-items: start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--bingo-rule); padding-bottom: 0.75rem; }
+.rulesHeading { margin: 0; font-size: 1.15rem; }
+.rulesClose { display: inline-grid; min-width: 2.25rem; min-height: 2.25rem; place-items: center; border: 1px solid var(--bingo-rule); border-radius: 0.5rem; background: var(--bingo-paper-raised); color: var(--bingo-graphite); }
+.rulesPanel ul { margin: 1rem 0 0; padding-left: 1.2rem; color: var(--bingo-graphite-muted); font-size: 0.9rem; line-height: 1.5; }
+
+@media (max-width: 22.5rem) {
+  .lobbySurface { padding: 0.25rem 0.5rem; }
+  .utilityBar { min-height: 2.25rem; margin-bottom: 0.25rem; }
+  .utilityButton, .rulesButton { min-height: 2.25rem; }
+  .utilityButton span { display: none; }
+  .shellTitle { font-size: 1.25rem; }
+  .inviteArea { min-height: 2.25rem; margin-bottom: 0.25rem; }
+  .invitePill { min-height: 2.25rem; padding-block: 0.25rem; }
+  .inviteReason { font-size: 0.68rem; }
+  .connectionLine { min-height: 0; margin-bottom: 0.25rem; padding-block: 0.35rem; font-size: 0.7rem; }
+  .boardSheet { padding: 0.375rem; }
+  .identityRow { align-items: center; margin-bottom: 0.35rem; }
+  .identityLabel { display: inline; margin-right: 0.4rem; }
+  .nameInput { width: 8rem; min-height: 2rem; font-size: 0.85rem; }
+  .readyMark { font-size: 0.62rem; }
+}

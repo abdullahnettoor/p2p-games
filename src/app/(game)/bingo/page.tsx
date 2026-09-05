@@ -25,9 +25,9 @@ function BingoContent() {
   return (
     <div className="gameRouteSurface">
       {mode === 'online-host' ? (
-        <BingoOnlineGame role="host" onExit={handleExitToCatalog} />
+        <BingoOnlineGame key="host" role="host" onExit={handleExitToCatalog} />
       ) : (
-        <BingoOnlineGame role="guest" matchId={matchParam ?? undefined} onExit={handleExitToCatalog} />
+        <BingoOnlineGame key={`guest:${matchParam ?? ''}`} role="guest" matchId={matchParam ?? undefined} onExit={handleExitToCatalog} />
       )}
     </div>
   )

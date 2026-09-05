@@ -142,6 +142,25 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     }
   }
 
+  public async retry(): Promise<void> {
+    this.state = {
+      ...this.state,
+      status: 'connecting',
+      error: null,
+    }
+    this.notify()
+
+    try {
+      const reconnect = (this.transport as ITransport & {
+        retryConnect?: () => Promise<string>
+      }).retryConnect
+      if (reconnect) await reconnect.call(this.transport)
+      await this.start()
+    } catch {
+      // start() records the plain-language failure in state for the Lobby pill.
+    }
+  }
+
   public updatePlayerName(name: string): void {
     const trimmed = name.trim()
     if (!trimmed) return
