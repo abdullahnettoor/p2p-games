@@ -193,7 +193,7 @@ describe('BingoMatchplay', () => {
     expect(screen.getByText("Bob's turn")).toBeInTheDocument()
   })
 
-  it('displays game-over modal when match concludes', () => {
+  it('displays a full result Shell screen when Match concludes', () => {
     const { hostCoordinator, guestCoordinator } = createTestCoordinators()
 
     render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)

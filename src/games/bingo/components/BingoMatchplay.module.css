@@ -93,9 +93,12 @@
 .turnCopy span { display: block; margin-top: 0.2rem; color: var(--bingo-graphite-muted); font-size: 0.68rem; line-height: 1.2; }
 .turnStatus :global(.timer) { min-height: 2.25rem; }
 
+.matchBody { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
 .boardColumn { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
 .boardStage { position: relative; display: flex; min-height: 13.75rem; flex: 1 1 auto; align-items: center; justify-content: center; padding: 0.35rem 0; }
 .matchBoard { width: auto; height: 100%; max-width: 100%; max-height: 100%; }
+.supportColumn { display: flex; min-width: 0; flex: 0 0 auto; flex-direction: column; }
+.desktopNotes { display: none; }
 .callSlip { position: absolute; z-index: 6; top: 0.5rem; right: 0.5rem; width: 8.5rem; border: 1px solid var(--player-ink); border-radius: 3px; padding: 0.45rem 0.65rem; background: var(--bingo-paper-raised); box-shadow: 0 5px 14px var(--bingo-slip-shadow); color: var(--player-ink); transform: rotate(1.5deg); animation: bingo-slip-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .callSlipLabel { display: block; overflow: hidden; font-family: var(--bingo-font-label); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.05em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .callSlipNumber { display: block; margin-top: 0.2rem; font-size: 1.6rem; font-weight: 900; line-height: 1; }
@@ -135,13 +138,24 @@
 }
 
 @media (orientation: landscape) and (min-width: 30rem) {
-  .matchContent { display: grid; grid-template-areas: "board status"; grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem); column-gap: 0.75rem; }
+  .matchContent { display: grid; grid-template-areas: "body status"; grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem); column-gap: 0.75rem; }
   .statusStrip { grid-area: status; display: flex; flex-direction: column; justify-content: center; border-block: 0; border-left: 1px solid var(--bingo-rule); padding: 0.75rem 0 0.75rem 0.75rem; }
+  .matchBody { grid-area: body; }
   .playerStatuses { grid-template-columns: 1fr; }
   .playerStatus { border-bottom: 1px solid var(--bingo-rule-soft); padding-inline: 0; }
   .playerStatus + .playerStatus { border-left: 0; }
   .turnStatus { border-top: 1px solid var(--bingo-rule); border-left: 0; padding: 0.75rem 0 0; }
-  .boardColumn { grid-area: board; }
+}
+
+@media (min-width: 64rem) and (min-height: 40rem) {
+  .matchContent { display: grid; grid-template-areas: "body status"; grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); column-gap: 1.5rem; }
+  .matchBody { display: grid; grid-template-columns: minmax(0, 30rem) minmax(16rem, 1fr); align-items: center; gap: 1rem; }
+  .boardStage { min-height: 0; max-height: 30rem; }
+  .matchBoard { max-width: 30rem; }
+  .supportColumn { justify-content: center; gap: 1rem; }
+  .desktopNotes { display: block; border-top: 1px solid var(--bingo-rule); padding-top: 0.75rem; }
+  .desktopNotes :global(.matchNotesList) { max-height: 18rem; overflow-y: auto; }
+  .history { margin-top: 0; }
 }
 
 @media (max-width: 22.5rem) {
@@ -154,6 +168,7 @@
   .turnStatus { border-top: 1px solid var(--bingo-rule-soft); border-left: 0; padding: 0.3rem 0.5rem; }
   .turnCopy span { display: none; }
   .boardStage { padding-block: 0.15rem; }
+  .supportColumn .desktopNotes { display: none; }
   .actionRow { gap: 0.25rem; }
   .actionButton { padding-inline: 0.45rem; }
   .actionButton span { display: none; }

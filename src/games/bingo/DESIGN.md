@@ -182,6 +182,15 @@ At widths near 320px, route gutters shrink to 8px and score-sheet padding shrink
 
 Use an 8px base rhythm with 4px for fine alignment. Do not duplicate the current turn in the header, Player row, and board copy.
 
+### Viewport layout contract
+- The Match, Lobby, result, and comparison surfaces are `100dvh`-first Shell screens. Their containers may page-scroll only when content genuinely cannot fit; they must not clip content to preserve a nominal no-scroll state.
+- The Board is sized by available height in the active Match, remains square, and is capped near 480px on wide screens. The non-Board Match budget is approximately 150px: Shell bar, status strip, and action row share that budget.
+- Board cells are at least 44px by 44px. Other controls target at least 36px by 36px, including controls on result and comparison screens.
+- Call slips and transient announcements overlay the Board edge rather than reserving a flow slot or moving the Board. Match notes, rules, and reactions open as sheets or popovers without persistent height.
+- Landscape uses a Board-left/status-right reflow. Desktop uses the freed horizontal space for a side column containing Recent Calls and expanded Match notes while keeping the Board the largest object.
+- Result is a full Shell screen. Compare Boards is a separate full Shell screen with both annotated Boards and the same ordered history, Player identity, and line descriptions. A received rematch request remains visible in both screens.
+- At 200% text zoom, text and controls may cause page scrolling when the content genuinely cannot fit; no content is clipped and browser zoom remains enabled.
+
 ## Elevation & Depth
 
 Paper depth is structural. The score sheet uses one cool gray cast shadow and a thin edge. Call slips may overlap the sheet with a smaller shadow. Board cells and status regions stay flat, separated by printed rules rather than nested card shadows.
@@ -200,7 +209,7 @@ The shadow alpha values are named tokens because they define the only two lifted
 
 The score sheet has a restrained 14px corner radius that reads as trimmed stock rather than a soft app card. Controls use 8px corners and call slips use 3px corners. Board cells are square with hairline grid rules. Ink marks use round stroke caps, small angle variations, and controlled overflow.
 
-Touch controls are at least 44 by 44 CSS pixels. Focus outlines sit outside the control and remain visible against both paper and ink.
+Board cells are at least 44 by 44 CSS pixels. Other touch controls are at least 36 by 36 CSS pixels. Focus outlines sit outside the control and remain visible against both paper and ink.
 
 ## Components
 

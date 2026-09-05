@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { BingoTurnEvent } from '../types'
 import { BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
 import styles from './BingoMatchNotes.module.css'
@@ -7,6 +7,8 @@ export interface BingoMatchNotesProps {
   history: BingoTurnEvent[]
   playersById: Record<string, BingoPlayerInk>
   open?: boolean
+  summaryLabel?: string
+  desktopOnly?: boolean
   className?: string
 }
 
@@ -19,11 +21,26 @@ export const BingoMatchNotes: React.FC<BingoMatchNotesProps> = ({
   history,
   playersById,
   open = false,
+  summaryLabel = 'Match notes',
+  desktopOnly = false,
   className,
 }) => {
+  const [isDesktop, setIsDesktop] = useState(!desktopOnly)
+
+  useEffect(() => {
+    if (!desktopOnly || typeof window === 'undefined' || !window.matchMedia) return
+    const media = window.matchMedia('(min-width: 64rem) and (min-height: 40rem)')
+    const update = () => setIsDesktop(media.matches)
+    update()
+    media.addEventListener?.('change', update)
+    return () => media.removeEventListener?.('change', update)
+  }, [desktopOnly])
+
+  if (desktopOnly && !isDesktop) return null
+
   return (
     <details open={open} className={`${styles.matchNotes} ${className ?? ''}`.trim()}>
-      <summary className={styles.matchNotesSummary}>Match notes</summary>
+      <summary className={styles.matchNotesSummary}>{summaryLabel}</summary>
       <ol className={styles.matchNotesList} aria-label="Complete Match history">
         {history.length === 0 ? (
           <li className={styles.matchNoteEmpty}>No Calls or Passes yet.</li>

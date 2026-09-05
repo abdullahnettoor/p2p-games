@@ -16,7 +16,7 @@ import { BingoSoundToggle } from './BingoSoundToggle'
 import { BingoReactionBar } from './BingoReactionBar'
 import { BingoReactionOverlay } from './BingoReactionOverlay'
 import { BingoMatchNotes } from './BingoMatchNotes'
-import { BingoGameOverModal } from './BingoGameOverModal'
+import { BingoComparisonScreen, BingoResultScreen } from './BingoResultScreen'
 import { BingoReconnectionBanner } from './BingoReconnectionBanner'
 import { cn } from '@/lib/utils'
 import styles from './BingoMatchplay.module.css'
@@ -68,6 +68,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
   const [isNotesOpen, setIsNotesOpen] = useState(false)
   const [isRulesOpen, setIsRulesOpen] = useState(false)
   const [isExitConfirming, setIsExitConfirming] = useState(false)
+  const [resultView, setResultView] = useState<'result' | 'comparison'>('result')
 
   const localPlayer = state.localPlayer
   const remotePlayer = state.remotePlayer
@@ -130,6 +131,37 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
     onExit()
   }
 
+  if (isGameOver) {
+    const resultProps = {
+      winResult: state.winResult,
+      localPlayer,
+      remotePlayer,
+      localCompletedLines: myLines,
+      remoteCompletedLines: remoteLines,
+      totalCalledCount: calls.length,
+      localBoard: myBoard,
+      remoteBoard: state.gameState.boards[remotePlayer.id] || [],
+      calls,
+      playersById,
+      localLineDetails: myLineDetails,
+      remoteLineDetails: state.gameState.lineDetails[remotePlayer.id],
+      history: state.gameState.history,
+      rematchState: state.rematchState,
+      onRequestRematch: () => coordinator.requestRematch(),
+      onAcceptRematch: () => coordinator.acceptRematch(),
+      onDeclineRematch: () => coordinator.declineRematch(),
+      onExit,
+      isMuted,
+      onToggleMute: toggleMute,
+    }
+
+    return resultView === 'comparison' ? (
+      <BingoComparisonScreen {...resultProps} onBack={() => setResultView('result')} />
+    ) : (
+      <BingoResultScreen {...resultProps} onCompareBoards={() => setResultView('comparison')} />
+    )
+  }
+
   return (
     <div className={cn('bingoTokenScope', styles.matchSurface, className)}>
       <BingoReactionOverlay coordinator={coordinator} />
@@ -183,8 +215,9 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
           </p>
         ) : null}
 
-        <div className={styles.boardColumn}>
-          <div className={styles.boardStage}>
+        <div className={styles.matchBody}>
+          <div className={styles.boardColumn}>
+            <div className={styles.boardStage}>
             {latestCall && latestCaller ? (
               <aside
                 key={latestCall.sequence}
@@ -198,22 +231,24 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
               </aside>
             ) : null}
 
-            <BingoBoardView
-              board={myBoard}
-              calls={calls}
-              playersById={playersById}
-              boardOwnerRole={localPlayer.role}
-              lineDetails={myLineDetails}
-              ariaLabel={`${localPlayer.name}'s Bingo board`}
-              isMyTurn={isMyTurn}
-              onPickNumber={submitMove}
-              disabled={!isMyTurn || isGameOver || state.isReconnecting}
-              sizeMode="height"
-              className={styles.matchBoard}
-            />
+              <BingoBoardView
+                board={myBoard}
+                calls={calls}
+                playersById={playersById}
+                boardOwnerRole={localPlayer.role}
+                lineDetails={myLineDetails}
+                ariaLabel={`${localPlayer.name}'s Bingo board`}
+                isMyTurn={isMyTurn}
+                onPickNumber={submitMove}
+                disabled={!isMyTurn || isGameOver || state.isReconnecting}
+                sizeMode="height"
+                className={styles.matchBoard}
+              />
+            </div>
           </div>
 
-          <section className={styles.history} aria-label="Recent Calls">
+          <aside className={styles.supportColumn} aria-label="Match record">
+            <section className={styles.history} aria-label="Recent Calls">
             <div className={styles.historyHeader}>
               <span>Recent Calls</span>
               <span>{calls.length}/25 called</span>
@@ -240,7 +275,9 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
                 })
               )}
             </div>
-          </section>
+            </section>
+            <BingoMatchNotes history={state.gameState.history} playersById={playersById} open summaryLabel="Complete Match history" desktopOnly className={styles.desktopNotes} />
+          </aside>
         </div>
       </main>
 
@@ -331,28 +368,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
         </div>
       ) : null}
 
-      {isGameOver ? (
-        <BingoGameOverModal
-          winResult={state.winResult}
-          localPlayer={localPlayer}
-          remotePlayer={remotePlayer}
-          localCompletedLines={myLines}
-          remoteCompletedLines={remoteLines}
-          totalCalledCount={calls.length}
-          localBoard={myBoard}
-          remoteBoard={state.gameState.boards[remotePlayer.id] || []}
-          calls={calls}
-          playersById={playersById}
-          localLineDetails={myLineDetails}
-          remoteLineDetails={state.gameState.lineDetails[remotePlayer.id]}
-          history={state.gameState.history}
-          rematchState={state.rematchState}
-          onRequestRematch={() => coordinator.requestRematch()}
-          onAcceptRematch={() => coordinator.acceptRematch()}
-          onDeclineRematch={() => coordinator.declineRematch()}
-          onExit={onExit}
-        />
-      ) : null}
+
     </div>
   )
 }

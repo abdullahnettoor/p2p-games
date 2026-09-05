@@ -1,0 +1,120 @@
+.resultSurface {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: max(0.25rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 13% 17%, rgba(39, 49, 58, 0.035) 0 0.6px, transparent 0.8px),
+    radial-gradient(circle at 84% 72%, rgba(39, 49, 58, 0.025) 0 0.7px, transparent 0.9px),
+    var(--bingo-desk);
+  background-size: 37px 41px, 53px 47px, auto;
+  color: var(--bingo-graphite);
+}
+
+.shellBar {
+  display: flex;
+  min-height: 2.75rem;
+  flex: 0 0 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: min(100%, 64rem);
+  margin-inline: auto;
+}
+
+.masthead { margin: 0; font-size: clamp(1.35rem, 7vw, 2rem); font-weight: 900; letter-spacing: 0.08em; line-height: 1; }
+.utilityButton, .resultSecondaryButton, .resultPrimaryButton {
+  display: inline-flex;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid var(--bingo-rule-strong);
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--bingo-paper-raised);
+  color: var(--bingo-graphite);
+  font-family: var(--bingo-font-label);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.utilityButton svg, .resultSecondaryButton svg, .resultPrimaryButton svg, .resultNotice svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
+.utilityButton:hover, .resultSecondaryButton:hover { border-color: var(--bingo-graphite); background: var(--bingo-rule-soft); }
+.resultPrimaryButton { border-color: var(--bingo-graphite); background: var(--bingo-graphite); color: var(--bingo-paper-raised); }
+.resultPrimaryButton:hover { background: color-mix(in srgb, var(--bingo-graphite) 88%, var(--bingo-paper)); }
+.utilityButton:focus-visible, .resultSecondaryButton:focus-visible, .resultPrimaryButton:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
+
+.resultContent, .comparisonContent { width: min(100%, 64rem); margin: 0 auto; }
+.resultContent { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: clamp(0.5rem, 3vw, 1.5rem) 0 1rem; }
+.resultHeader { border-bottom: 2px solid var(--bingo-graphite); padding: 0.25rem 0 1rem; text-align: center; }
+.resultKicker, .resultSummaryLabel { margin: 0; color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.resultBadge { display: grid; width: 4rem; height: 4rem; place-items: center; margin: 0.75rem auto; border: 2px solid var(--bingo-graphite); border-radius: 0.875rem; background: var(--bingo-paper-raised); color: var(--bingo-graphite); transform: rotate(-2deg); }
+.resultBadge svg { width: 1.8rem; height: 1.8rem; }
+.resultBadge[data-result="draw"] { border-color: var(--bingo-rule); color: var(--bingo-graphite-muted); }
+.resultTitle { margin: 0; font-size: clamp(1.5rem, 7vw, 2.25rem); font-weight: 900; letter-spacing: 0.02em; line-height: 1; }
+.resultDescription { max-width: 34rem; margin: 0.5rem auto 0; color: var(--bingo-graphite-muted); font-size: 0.875rem; line-height: 1.45; }
+.resultSummary { border-bottom: 1px solid var(--bingo-rule); padding-bottom: 1rem; }
+.resultScoreGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
+.resultPlayerCard { position: relative; display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 0.25rem; border: 1px solid var(--bingo-rule); border-radius: 0.5rem; padding: 0.75rem 0.5rem 0.625rem; background: color-mix(in srgb, var(--bingo-paper-raised) 76%, transparent); text-align: center; }
+.resultPlayerCard[data-state="WINNER"] { border-width: 2px; border-color: var(--bingo-graphite); }
+.resultPlayerCard strong { font-size: 1.75rem; font-weight: 900; line-height: 1; }
+.resultPlayerCard > span:not(.resultPlayerName):not(.resultStatus) { color: var(--bingo-graphite-muted); font-size: 0.625rem; }
+.resultPlayerName { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: center; gap: 0.25rem; overflow: hidden; font-size: 0.75rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.resultPlayerMark { font-size: 1rem; line-height: 1; }
+.resultPlayerMark[data-ink="host"] { color: var(--bingo-host-ink); }
+.resultPlayerMark[data-ink="guest"] { color: var(--bingo-guest-ink); }
+.resultStatus { border: 1px solid var(--bingo-rule); border-radius: 0.25rem; padding: 0.125rem 0.375rem; color: var(--bingo-graphite-muted); font-family: var(--bingo-font-label); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.06em; line-height: 1.2; }
+.resultTotal { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.75rem; border-top: 1px solid var(--bingo-rule-soft); padding-top: 0.75rem; color: var(--bingo-graphite-muted); font-size: 0.75rem; }
+.resultTotal span { display: inline-flex; align-items: center; gap: 0.375rem; }
+.resultTotal svg { width: 1rem; height: 1rem; }
+.resultTotal strong { color: var(--bingo-graphite); font-variant-numeric: tabular-nums; }
+.resultActions { display: grid; align-content: start; gap: 0.5rem; }
+.resultActions :global(.matchNotes) { border: 1px solid var(--bingo-rule); border-radius: 0.5rem; background: var(--bingo-paper-raised); }
+.resultActions :global(.matchNotesSummary) { min-height: 2.75rem; padding: 0.75rem; }
+.resultNotice, .rematchRequest { border: 1px solid var(--bingo-rule); border-radius: 0.5rem; padding: 0.75rem; color: var(--bingo-graphite-muted); font-size: 0.75rem; line-height: 1.35; text-align: center; }
+.resultNotice { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+.rematchRequest { color: var(--bingo-graphite); }
+.rematchRequest p { margin: 0; font-weight: 800; }
+.rematchRequestActions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.625rem; }
+
+.comparisonContent { padding: 0.75rem 0 1rem; }
+.comparisonHeader { display: flex; align-items: center; gap: 1rem; border-bottom: 2px solid var(--bingo-graphite); padding-bottom: 0.75rem; }
+.comparisonHeader h2 { margin: 0.2rem 0 0; font-size: clamp(1.35rem, 5vw, 2rem); }
+.comparisonRematch { margin-top: 0.75rem; }
+.comparisonLayout { display: grid; gap: 1rem; margin-top: 1rem; }
+.comparisonBoards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.comparisonBoard { min-width: 0; }
+.comparisonBoard h3 { display: flex; align-items: center; justify-content: center; gap: 0.35rem; margin: 0 0 0.5rem; font-family: var(--bingo-font-label); font-size: 0.8rem; letter-spacing: 0.05em; text-align: center; text-transform: uppercase; }
+.compareBoard { width: 100%; max-width: 30rem; margin-inline: auto; }
+.comparisonNotes { min-width: 0; }
+.comparisonNotes :global(.matchNotes) { border-top: 1px solid var(--bingo-rule); padding-top: 0.75rem; }
+
+@media (min-width: 48rem) {
+  .resultContent { grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem); align-items: start; }
+  .resultHeader, .resultSummary { grid-column: 1; }
+  .resultHeader { text-align: left; }
+  .resultBadge { margin-inline: 0; }
+  .resultDescription { margin-inline: 0; }
+  .resultActions { grid-column: 2; grid-row: 1 / span 2; padding-top: 1.5rem; }
+  .comparisonLayout { grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem); align-items: start; }
+  .comparisonNotes { position: sticky; top: 0.5rem; }
+}
+
+@media (max-width: 30rem) {
+  .comparisonBoards { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 22.5rem) {
+  .resultSurface { padding-inline: 0.25rem; }
+  .utilityButton span { display: none; }
+  .resultScoreGrid { gap: 0.25rem; }
+  .resultTotal { align-items: flex-start; flex-direction: column; gap: 0.25rem; }
+  .comparisonHeader { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
+  .comparisonHeader .resultSecondaryButton { width: 100%; }
+}
