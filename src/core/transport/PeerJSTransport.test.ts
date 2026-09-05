@@ -141,6 +141,7 @@ describe('PeerJSTransport Connection Lifecycle', () => {
     await vi.advanceTimersByTimeAsync(20000)
 
     expect(errorHandler).toHaveBeenCalled()
+    expect(errorHandler.mock.calls[0][0].message).toContain('VPN')
     guest.disconnect()
     vi.useRealTimers()
   })
@@ -173,5 +174,92 @@ describe('PeerJSTransport Connection Lifecycle', () => {
 
     guest.disconnect()
     vi.useRealTimers()
+  })
+})
+
+describe('PeerJSTransport connection ownership', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('does not register an orphaned peer when disconnected mid-connect', async () => {
+    // React StrictMode (and any fast unmount/remount) tears the transport down
+    // while connect() is still awaiting the peerjs dynamic import. Previously
+    // the Peer was created afterwards and stayed registered on the signaling
+    // server, then dialled the host and hijacked the real connection.
+    const transport = new PeerJSTransport({ role: 'guest', targetPeerId: 'host-xyz' })
+
+    const connectPromise = transport.connect()
+    transport.disconnect()
+
+    await expect(connectPromise).rejects.toThrow(/already been disconnected/)
+
+    // Let any pending peer creation settle, then assert none happened.
+    await new Promise((r) => setTimeout(r, 30))
+    expect((transport as any).peerInstance).toBeNull()
+    expect(transport.status).toBe('closed')
+  })
+
+  it('ignores a late close event from a superseded connection', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    await host.connect()
+
+    const conn1 = new MockDataConnection('guest-1', true)
+    ;(host as any).peerInstance.emit('connection', conn1)
+
+    const conn2 = new MockDataConnection('guest-2', true)
+    ;(host as any).peerInstance.emit('connection', conn2)
+
+    expect(host.remotePlayerId).toBe('guest-2')
+
+    // The retired connection closes after the replacement is already live.
+    conn1.emit('close')
+
+    expect(host.status).toBe('connected')
+    expect(host.remotePlayerId).toBe('guest-2')
+    expect((host as any).connection).toBe(conn2)
+
+    host.disconnect()
+  })
+
+  it('does not report a player leave when swapping in a replacement connection', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    await host.connect()
+
+    const leaveHandler = vi.fn()
+    host.onPlayerLeave(leaveHandler)
+
+    const conn1 = new MockDataConnection('guest-1', true)
+    ;(host as any).peerInstance.emit('connection', conn1)
+
+    const conn2 = new MockDataConnection('guest-2', true)
+    ;(host as any).peerInstance.emit('connection', conn2)
+
+    expect(conn1.close).toHaveBeenCalled()
+    expect(leaveHandler).not.toHaveBeenCalled()
+    expect(host.status).toBe('connected')
+
+    host.disconnect()
+  })
+
+  it('ignores data arriving on a superseded connection', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    await host.connect()
+
+    const messageHandler = vi.fn()
+    host.onMessage(messageHandler)
+
+    const conn1 = new MockDataConnection('guest-1', true)
+    ;(host as any).peerInstance.emit('connection', conn1)
+    const conn2 = new MockDataConnection('guest-2', true)
+    ;(host as any).peerInstance.emit('connection', conn2)
+
+    conn1.emit('data', { type: 'profile', payload: { playerName: 'Ghost' } })
+    expect(messageHandler).not.toHaveBeenCalled()
+
+    conn2.emit('data', { type: 'profile', payload: { playerName: 'Real' } })
+    expect(messageHandler).toHaveBeenCalledTimes(1)
+
+    host.disconnect()
   })
 })

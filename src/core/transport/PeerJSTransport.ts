@@ -18,18 +18,56 @@ export interface PeerJSTransportOptions {
   heartbeatTimeoutMs?: number
 }
 
-const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
+const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  {
-    urls: [
-      'turn:eu-0.turn.peerjs.com:3478',
-      'turn:us-0.turn.peerjs.com:3478',
-    ],
-    username: 'peerjs',
-    credential: 'peerjsp',
-  },
 ]
+
+/**
+ * TURN relays are opt-in via env because there is no free public relay we can
+ * rely on. Without one, players behind symmetric NAT or a VPN cannot connect at
+ * all. Set NEXT_PUBLIC_TURN_URLS (comma separated) plus credentials to enable.
+ */
+function configuredTurnServers(): RTCIceServer[] {
+  const urls = process.env.NEXT_PUBLIC_TURN_URLS
+  if (!urls) return []
+
+  const parsed = urls
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean)
+  if (parsed.length === 0) return []
+
+  return [
+    {
+      urls: parsed,
+      username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+      credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
+    },
+  ]
+}
+
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [...DEFAULT_STUN_SERVERS, ...configuredTurnServers()]
+
+/**
+ * Reached when signaling succeeded (both peers found each other) but the ICE
+ * connectivity checks never completed. Naming the usual culprit saves players
+ * from chasing a bad invite link that is in fact perfectly valid.
+ */
+const ICE_FAILURE_MESSAGE =
+  'Could not open a direct peer-to-peer connection. The invite link is valid and both players ' +
+  'were found, but the direct connection was blocked \u2014 usually by a VPN (e.g. Cloudflare WARP), ' +
+  'a corporate firewall, or a restrictive network. Try disabling your VPN, then reconnect.'
+
+const PEER_UNAVAILABLE_MESSAGE =
+  'Match not found or the host has disconnected. Please verify you have the latest invite link from the host.'
+
+function isPeerUnavailable(err: unknown, message: string): boolean {
+  return (
+    (err as { type?: string } | null)?.type === 'peer-unavailable' ||
+    message.includes('Could not connect to peer')
+  )
+}
 
 export class PeerJSTransport implements ITransport {
   public status: TransportStatus = 'disconnected'
@@ -47,6 +85,12 @@ export class PeerJSTransport implements ITransport {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   private lastMessageTimestamp = 0
+  /**
+   * Set by disconnect(). connect() awaits a dynamic import before the Peer
+   * exists, so without this flag a disconnect during that window leaves an
+   * orphaned Peer registered on the signaling server.
+   */
+  private isDestroyed = false
 
   private messageHandlers = new Set<TransportEventHandler>()
   private statusHandlers = new Set<StatusChangeHandler>()
@@ -68,11 +112,20 @@ export class PeerJSTransport implements ITransport {
       throw new Error('PeerJSTransport can only be initialized in browser environments')
     }
 
+    if (this.isDestroyed) {
+      throw new Error('Cannot connect: transport has already been disconnected')
+    }
+
     if (this.status === 'connected') return this.localPlayerId
 
     this.setStatus('connecting')
 
     const { Peer } = await import('peerjs')
+
+    // disconnect() may have been called while the import was in flight.
+    if (this.isDestroyed) {
+      throw new Error('Cannot connect: transport has already been disconnected')
+    }
 
     return new Promise<string>((resolve, reject) => {
       let isResolved = false
@@ -103,6 +156,21 @@ export class PeerJSTransport implements ITransport {
 
         peer.on('open', (assignedId: string) => {
           cleanupSignalingTimeout()
+
+          // Torn down while the signaling handshake was in flight.
+          if (this.isDestroyed) {
+            try {
+              peer.destroy()
+            } catch {
+              // safe ignore
+            }
+            if (!isResolved) {
+              isResolved = true
+              reject(new Error('Cannot connect: transport has already been disconnected'))
+            }
+            return
+          }
+
           this.localPlayerId = assignedId
 
           if (this.role === 'guest') {
@@ -127,15 +195,20 @@ export class PeerJSTransport implements ITransport {
         })
 
         peer.on('connection', (conn: any) => {
-          if (this.role === 'host') {
-            if (this.connection && this.connection !== conn) {
-              try {
-                this.connection.close()
-              } catch {
-                // ignore
-              }
+          if (this.role !== 'host' || this.isDestroyed) return
+
+          // Adopt the newcomer first, then retire the old connection. Closing
+          // first would fire the old connection's `close` handler while it is
+          // still the current one, tearing down state we are about to reuse.
+          const previous = this.connection
+          this.setupConnection(conn)
+
+          if (previous && previous !== conn) {
+            try {
+              previous.close()
+            } catch {
+              // ignore
             }
-            this.setupConnection(conn)
           }
         })
 
@@ -143,12 +216,11 @@ export class PeerJSTransport implements ITransport {
           cleanupSignalingTimeout()
           this.stopConnectionTimeout()
 
-          let errorMsg = err instanceof Error ? err.message : String(err)
-          if (err?.type === 'peer-unavailable' || errorMsg.includes('Could not connect to peer')) {
-            errorMsg = 'Match not found or the host has disconnected. Please verify you have the latest invite link from the host.'
-          }
+          const rawMessage = err instanceof Error ? err.message : String(err)
+          const error = new Error(
+            isPeerUnavailable(err, rawMessage) ? PEER_UNAVAILABLE_MESSAGE : rawMessage
+          )
 
-          const error = new Error(errorMsg)
           this.notifyError(error)
           if (!isResolved && this.status === 'connecting') {
             isResolved = true
@@ -188,6 +260,7 @@ export class PeerJSTransport implements ITransport {
     this.connection = conn
 
     const handleOpen = () => {
+      if (this.connection !== conn) return
       this.stopConnectionTimeout()
       this.remotePlayerId = conn.peer
       this.setStatus('connected')
@@ -199,10 +272,14 @@ export class PeerJSTransport implements ITransport {
     if (conn.open) {
       handleOpen()
     } else {
+      // Covers the host too: an incoming connection whose ICE never completes
+      // would otherwise leave the lobby waiting forever with no explanation.
+      this.startConnectionTimeout()
       conn.on('open', handleOpen)
     }
 
     conn.on('data', (data: any) => {
+      if (this.connection !== conn) return
       this.lastMessageTimestamp = Date.now()
       try {
         const message: TransportMessage = typeof data === 'string' ? JSON.parse(data) : data
@@ -216,6 +293,9 @@ export class PeerJSTransport implements ITransport {
     })
 
     conn.on('close', () => {
+      // A superseded connection closing must not clear the live one.
+      if (this.connection !== conn) return
+
       this.stopConnectionTimeout()
       const prevRemote = this.remotePlayerId
       this.remotePlayerId = null
@@ -230,12 +310,13 @@ export class PeerJSTransport implements ITransport {
     })
 
     conn.on('error', (err: any) => {
+      if (this.connection !== conn) return
+
       this.stopConnectionTimeout()
-      let errorMsg = err instanceof Error ? err.message : String(err)
-      if (err?.type === 'peer-unavailable' || errorMsg.includes('Could not connect to peer')) {
-        errorMsg = 'Match not found or the host has disconnected. Please verify you have the latest invite link from the host.'
-      }
-      const error = new Error(errorMsg)
+      const rawMessage = err instanceof Error ? err.message : String(err)
+      const error = new Error(
+        isPeerUnavailable(err, rawMessage) ? PEER_UNAVAILABLE_MESSAGE : rawMessage
+      )
       this.notifyError(error)
       onErrorCallback?.(error)
     })
@@ -281,6 +362,7 @@ export class PeerJSTransport implements ITransport {
   }
 
   public disconnect(): void {
+    this.isDestroyed = true
     this.stopHeartbeat()
     this.stopConnectionTimeout()
 
@@ -315,10 +397,7 @@ export class PeerJSTransport implements ITransport {
     this.stopConnectionTimeout()
     this.connectionTimeoutTimer = setTimeout(() => {
       if (this.status !== 'connected') {
-        const error = new Error(
-          'Connecting to host timed out. Please verify that the host is online and the invite link is correct.'
-        )
-        this.notifyError(error)
+        this.notifyError(new Error(ICE_FAILURE_MESSAGE))
       }
     }, 20000)
   }
