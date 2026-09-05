@@ -12,6 +12,9 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:p2p": "node scripts/p2p-loop.mjs",
+    "test:p2p:bingo": "node scripts/bingo-lobby-loop.mjs",
+    "test:webrtc-env": "node scripts/webrtc-control.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
@@ -36,6 +39,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.5.5",
     "jsdom": "^30.0.1",
+    "playwright": "^1.63.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
