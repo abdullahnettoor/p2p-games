@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import { BingoMatchplay } from './BingoMatchplay'
 import { BingoMatchCoordinator } from '../state/BingoMatchCoordinator'
 import { createLoopbackTransportPair } from '@/core/transport/LoopbackTransport'
@@ -96,7 +96,6 @@ describe('BingoMatchplay', () => {
 
     expect(screen.getAllByLabelText('Latest Call')).toHaveLength(2)
     expect(screen.getAllByText('Alice called')).toHaveLength(2)
-    expect(screen.getAllByText('×')).toHaveLength(2)
     expect(hostView.querySelector('[data-call-number="7"][data-ink="host"]')).toBeInTheDocument()
     expect(guestView.querySelector('[data-call-number="7"][data-ink="host"]')).toBeInTheDocument()
   })
@@ -155,16 +154,15 @@ describe('BingoMatchplay', () => {
     expect(screen.getByRole('button', { name: /unmute sound effects/i })).toBeInTheDocument()
   })
 
-  it('renders emoji reaction bar and dispatches floating reaction on click', () => {
+  it('renders one Doodle control and dispatches a floating reaction on click', () => {
     const { hostCoordinator, guestCoordinator } = createTestCoordinators()
     render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
 
-    const reactionBtn = screen.getByRole('button', { name: /Reaction 🔥/i })
-    expect(reactionBtn).toBeInTheDocument()
+    const doodleBtn = screen.getByRole('button', { name: 'Doodle' })
+    expect(doodleBtn).toBeInTheDocument()
 
-    act(() => {
-      fireEvent.click(reactionBtn)
-    })
+    fireEvent.click(doodleBtn)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Send doodle 🔥' }))
 
     // Both local screen and remote coordinator receive reaction
     expect(screen.getAllByText('🔥').length).toBe(2)
@@ -175,7 +173,29 @@ describe('BingoMatchplay', () => {
       guestCoordinator.sendReaction('👋')
     })
 
-    expect(screen.getAllByText('👋').length).toBe(2)
+    expect(screen.getAllByText('👋').length).toBe(1)
     expect(screen.getAllByText('Bob').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('keeps only the previous four Calls in the compact trail and all events in Match notes', () => {
+    const { hostCoordinator, guestCoordinator } = createTestCoordinators()
+    render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
+
+    act(() => {
+      for (let number = 1; number <= 5; number += 1) {
+        if (hostCoordinator.isMyTurn) hostCoordinator.submitMove(number)
+        else guestCoordinator.submitMove(number)
+      }
+    })
+
+    const recentCalls = screen.getByRole('region', { name: 'Recent Calls' })
+    const matchNotes = screen.getByText('Match notes')
+    act(() => {
+      fireEvent.click(matchNotes)
+    })
+
+    expect(recentCalls).toBeInTheDocument()
+    expect(within(recentCalls).getAllByLabelText(/called by/)).toHaveLength(4)
+    expect(screen.getAllByRole('listitem')).toHaveLength(5)
   })
 })

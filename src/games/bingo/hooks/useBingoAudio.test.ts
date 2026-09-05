@@ -9,10 +9,17 @@ describe('useBingoAudio', () => {
   let mockSynth: SoundSynthesizer
 
   beforeEach(() => {
+    localStorage.clear()
     mockSynth = new SoundSynthesizer()
     vi.spyOn(mockSynth, 'playNumberSelect').mockImplementation(() => {})
     vi.spyOn(mockSynth, 'playTurnChange').mockImplementation(() => {})
     vi.spyOn(mockSynth, 'playLineComplete').mockImplementation(() => {})
+    vi.spyOn(mockSynth, 'playPencilScratch').mockImplementation(() => {})
+    vi.spyOn(mockSynth, 'playPaperFlick').mockImplementation(() => {})
+    vi.spyOn(mockSynth, 'playLineStamp').mockImplementation(() => {})
+    vi.spyOn(mockSynth, 'playBingo').mockImplementation(() => {})
+    vi.spyOn(mockSynth, 'playDraw').mockImplementation(() => {})
+    vi.spyOn(mockSynth, 'playFinalThreeSecondTick').mockImplementation(() => {})
     vi.spyOn(mockSynth, 'playVictory').mockImplementation(() => {})
     vi.spyOn(mockSynth, 'playDefeat').mockImplementation(() => {})
   })
@@ -46,7 +53,7 @@ describe('useBingoAudio', () => {
     }
   }
 
-  it('triggers playNumberSelect when a new number is called', () => {
+  it('triggers a pencil scratch when a new number is called locally', () => {
     let state = createMockMatchState({
       gameState: {
         ...createMockMatchState().gameState,
@@ -59,7 +66,7 @@ describe('useBingoAudio', () => {
     })
 
     // Initial render should not play catchup sounds
-    expect(mockSynth.playNumberSelect).not.toHaveBeenCalled()
+    expect(mockSynth.playPencilScratch).not.toHaveBeenCalled()
 
     // Add another number
     state = {
@@ -68,13 +75,46 @@ describe('useBingoAudio', () => {
         ...state.gameState,
         history: [
           ...state.gameState.history,
-          { type: 'call', number: 12, playerId: 'p2', sequence: 2 },
+          { type: 'call', number: 12, playerId: 'p1', sequence: 2 },
         ],
       },
     }
     rerender({ s: state })
 
-    expect(mockSynth.playNumberSelect).toHaveBeenCalledTimes(1)
+    expect(mockSynth.playPencilScratch).toHaveBeenCalledTimes(1)
+  })
+
+  it('triggers a paper flick for a Call from the other Player', () => {
+    let state = createMockMatchState()
+    const { rerender } = renderHook(({ s }) => useBingoAudio(s, mockSynth), {
+      initialProps: { s: state },
+    })
+
+    state = {
+      ...state,
+      gameState: {
+        ...state.gameState,
+        history: [{ type: 'call', number: 12, playerId: 'p2', sequence: 1 }],
+      },
+    }
+    rerender({ s: state })
+
+    expect(mockSynth.playPaperFlick).toHaveBeenCalledTimes(1)
+    expect(mockSynth.playPencilScratch).not.toHaveBeenCalled()
+  })
+
+  it('plays one final-three-second tick when the local timer crosses the threshold', () => {
+    let state = createMockMatchState({ turnSecondsRemaining: 4 })
+    const { rerender } = renderHook(({ s }) => useBingoAudio(s, mockSynth), {
+      initialProps: { s: state },
+    })
+
+    state = { ...state, turnSecondsRemaining: 3 }
+    rerender({ s: state })
+    state = { ...state, turnSecondsRemaining: 2 }
+    rerender({ s: state })
+
+    expect(mockSynth.playFinalThreeSecondTick).toHaveBeenCalledTimes(2)
   })
 
   it('triggers playTurnChange when activePlayerId switches', () => {
@@ -96,7 +136,7 @@ describe('useBingoAudio', () => {
     expect(mockSynth.playTurnChange).toHaveBeenCalledTimes(1)
   })
 
-  it('triggers playLineComplete when local completed lines increase', () => {
+  it('triggers playLineStamp when local completed lines increase', () => {
     let state = createMockMatchState()
 
     const { rerender } = renderHook(({ s }) => useBingoAudio(s, mockSynth), {
@@ -109,10 +149,10 @@ describe('useBingoAudio', () => {
     }
     rerender({ s: state })
 
-    expect(mockSynth.playLineComplete).toHaveBeenCalledTimes(1)
+    expect(mockSynth.playLineStamp).toHaveBeenCalledTimes(1)
   })
 
-  it('triggers playLineComplete when remote player completes a line', () => {
+  it('triggers playLineStamp when remote player completes a line', () => {
     let state = createMockMatchState()
 
     const { rerender } = renderHook(({ s }) => useBingoAudio(s, mockSynth), {
@@ -125,10 +165,10 @@ describe('useBingoAudio', () => {
     }
     rerender({ s: state })
 
-    expect(mockSynth.playLineComplete).toHaveBeenCalledTimes(1)
+    expect(mockSynth.playLineStamp).toHaveBeenCalledTimes(1)
   })
 
-  it('triggers playVictory when local player wins', () => {
+  it('triggers playBingo when local player wins', () => {
     let state = createMockMatchState()
 
     const { rerender } = renderHook(({ s }) => useBingoAudio(s, mockSynth), {
@@ -142,7 +182,8 @@ describe('useBingoAudio', () => {
     }
     rerender({ s: state })
 
-    expect(mockSynth.playVictory).toHaveBeenCalledTimes(1)
+    expect(mockSynth.playBingo).toHaveBeenCalledTimes(1)
+    expect(mockSynth.playVictory).not.toHaveBeenCalled()
     expect(mockSynth.playDefeat).not.toHaveBeenCalled()
   })
 
@@ -161,10 +202,10 @@ describe('useBingoAudio', () => {
     rerender({ s: state })
 
     expect(mockSynth.playDefeat).toHaveBeenCalledTimes(1)
-    expect(mockSynth.playVictory).not.toHaveBeenCalled()
+    expect(mockSynth.playBingo).not.toHaveBeenCalled()
   })
 
-  it('does not trigger playVictory or playDefeat on a draw', () => {
+  it('triggers playDraw instead of a win sound on a draw', () => {
     let state = createMockMatchState()
 
     const { rerender } = renderHook(({ s }) => useBingoAudio(s, mockSynth), {
@@ -178,7 +219,8 @@ describe('useBingoAudio', () => {
     }
     rerender({ s: state })
 
-    expect(mockSynth.playVictory).not.toHaveBeenCalled()
+    expect(mockSynth.playDraw).toHaveBeenCalledTimes(1)
+    expect(mockSynth.playBingo).not.toHaveBeenCalled()
     expect(mockSynth.playDefeat).not.toHaveBeenCalled()
   })
 

@@ -50,8 +50,14 @@ describe('SoundSynthesizer', () => {
 
     expect(() => {
       synth.playNumberSelect()
+      synth.playPencilScratch()
+      synth.playPaperFlick()
       synth.playTurnChange()
+      synth.playLineStamp()
       synth.playLineComplete()
+      synth.playBingo()
+      synth.playDraw()
+      synth.playFinalThreeSecondTick()
       synth.playVictory()
       synth.playDefeat()
       synth.playReaction()
@@ -62,8 +68,14 @@ describe('SoundSynthesizer', () => {
     const synth = new SoundSynthesizer()
     expect(() => {
       synth.playNumberSelect()
+      synth.playPencilScratch()
+      synth.playPaperFlick()
       synth.playTurnChange()
+      synth.playLineStamp()
       synth.playLineComplete()
+      synth.playBingo()
+      synth.playDraw()
+      synth.playFinalThreeSecondTick()
       synth.playVictory()
       synth.playDefeat()
       synth.playReaction()
@@ -108,5 +120,19 @@ describe('SoundSynthesizer', () => {
     expect(mockAudioContext.createOscillator).toHaveBeenCalled()
     expect(mockAudioContext.createGain).toHaveBeenCalled()
     expect(mockOscillatorNode.start).toHaveBeenCalled()
+
+    synth.playBingo()
+    const scheduledAfterBingo = mockAudioContext.createOscillator.mock.calls.length
+    synth.playReaction()
+    expect(mockAudioContext.createOscillator).toHaveBeenCalledTimes(scheduledAfterBingo)
+
+    const reactionFirstSynth = new SoundSynthesizer({
+      audioContextFactory: () => mockAudioContext as unknown as AudioContext,
+    })
+    reactionFirstSynth.playReaction()
+    const scheduledAfterReaction = mockAudioContext.createOscillator.mock.calls.length
+    reactionFirstSynth.playBingo()
+    expect(mockAudioContext.createOscillator.mock.calls.length).toBeGreaterThan(scheduledAfterReaction)
+    expect(mockOscillatorNode.stop).toHaveBeenCalled()
   })
 })

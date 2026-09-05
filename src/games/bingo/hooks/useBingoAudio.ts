@@ -1,9 +1,7 @@
-'use client'
-
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { SoundSynthesizer, defaultSoundSynthesizer } from '@/core/audio/SoundSynthesizer'
 import { BingoMatchState } from '../state/BingoMatchCoordinator'
-import { getCalledNumbers } from '../engine'
+import { getCalls } from '../engine'
 
 export interface UseBingoAudioResult {
   isMuted: boolean
@@ -11,8 +9,18 @@ export interface UseBingoAudioResult {
   setMuted: (muted: boolean) => void
 }
 
+function provideLightHaptic(duration: number): void {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  try {
+    navigator.vibrate(duration)
+  } catch {
+    // Haptics are optional and may be blocked by the browser.
+  }
+}
+
 /**
- * Hook to manage game audio feedback across BINGO matchplay state transitions.
+ * Maps deterministic Match state transitions to restrained audio and optional haptics.
  */
 export function useBingoAudio(
   state: BingoMatchState | null,
@@ -33,17 +41,18 @@ export function useBingoAudio(
     [synth]
   )
 
-  // Track previous state references to trigger sounds only on transitions
-  const prevCalledLengthRef = useRef<number | null>(null)
-  const prevActivePlayerIdRef = useRef<string | null>(null)
-  const prevMyLinesRef = useRef<number | null>(null)
-  const prevRemoteLinesRef = useRef<number | null>(null)
-  const prevGameOverRef = useRef<boolean | null>(null)
+  const previousCallCountRef = useRef<number | null>(null)
+  const previousActivePlayerIdRef = useRef<string | null>(null)
+  const previousMyLinesRef = useRef<number | null>(null)
+  const previousRemoteLinesRef = useRef<number | null>(null)
+  const previousGameOverRef = useRef<boolean | null>(null)
+  const previousSecondsRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!state) return
 
-    const currentCalledLength = getCalledNumbers(state.gameState.history).length
+    const calls = getCalls(state.gameState.history)
+    const currentCallCount = calls.length
     const currentActivePlayerId = state.gameState.activePlayerId
     const localId = state.localPlayer.id
     const remoteId = state.remotePlayer.id
@@ -51,49 +60,64 @@ export function useBingoAudio(
     const currentRemoteLines = state.gameState.completedLines[remoteId] || 0
     const isGameOver = state.winResult.isGameOver
 
-    // If first render, initialize refs and don't play transition sounds
-    if (prevCalledLengthRef.current === null) {
-      prevCalledLengthRef.current = currentCalledLength
-      prevActivePlayerIdRef.current = currentActivePlayerId
-      prevMyLinesRef.current = currentMyLines
-      prevRemoteLinesRef.current = currentRemoteLines
-      prevGameOverRef.current = isGameOver
+    if (previousCallCountRef.current === null) {
+      previousCallCountRef.current = currentCallCount
+      previousActivePlayerIdRef.current = currentActivePlayerId
+      previousMyLinesRef.current = currentMyLines
+      previousRemoteLinesRef.current = currentRemoteLines
+      previousGameOverRef.current = isGameOver
+      previousSecondsRef.current = state.turnSecondsRemaining
       return
     }
 
-    const hasNewNumber = currentCalledLength > prevCalledLengthRef.current
+    const hasNewCall = currentCallCount > previousCallCountRef.current
     const hasNewLine =
-      currentMyLines > (prevMyLinesRef.current ?? 0) ||
-      currentRemoteLines > (prevRemoteLinesRef.current ?? 0)
+      currentMyLines > (previousMyLinesRef.current ?? 0) ||
+      currentRemoteLines > (previousRemoteLinesRef.current ?? 0)
     const hasTurnChanged =
-      prevActivePlayerIdRef.current !== null &&
-      currentActivePlayerId !== prevActivePlayerIdRef.current
-    const hasGameOver = isGameOver && !prevGameOverRef.current
+      previousActivePlayerIdRef.current !== null &&
+      currentActivePlayerId !== previousActivePlayerIdRef.current
+    const hasGameOver = isGameOver && !previousGameOverRef.current
+    const hasFinalThreeSecondTick =
+      currentActivePlayerId === localId &&
+      state.turnSecondsRemaining > 0 &&
+      previousSecondsRef.current !== null &&
+      state.turnSecondsRemaining < previousSecondsRef.current &&
+      state.turnSecondsRemaining <= 3
 
-    // Priority-based audio dispatch to avoid simultaneous colliding frequencies:
-    // 1. Game Over (highest priority)
     if (hasGameOver) {
-      if (state.winResult.winnerId === localId) {
-        synth.playVictory()
+      if (state.winResult.isDraw) {
+        synth.playDraw()
+      } else if (state.winResult.winnerId === localId) {
+        synth.playBingo()
       } else if (state.winResult.winnerId === remoteId) {
         synth.playDefeat()
       }
     } else if (hasNewLine) {
-      // 2. Line completion (chords take precedence over basic click)
-      synth.playLineComplete()
-    } else if (hasNewNumber) {
-      // 3. Tactile number click
-      synth.playNumberSelect()
+      synth.playLineStamp()
+      provideLightHaptic(14)
+    } else if (hasNewCall) {
+      const latestCall = calls[calls.length - 1]
+      if (latestCall.playerId === localId) {
+        synth.playPencilScratch()
+      } else {
+        synth.playPaperFlick()
+      }
+      provideLightHaptic(8)
+    } else if (hasFinalThreeSecondTick) {
+      synth.playFinalThreeSecondTick()
+      provideLightHaptic(6)
     } else if (hasTurnChanged) {
-      // 4. Turn change without number select (e.g. timeout turn pass)
       synth.playTurnChange()
+      provideLightHaptic(10)
     }
 
-    prevCalledLengthRef.current = currentCalledLength
-    prevMyLinesRef.current = currentMyLines
-    prevRemoteLinesRef.current = currentRemoteLines
-    prevActivePlayerIdRef.current = currentActivePlayerId
-    prevGameOverRef.current = isGameOver
+    previousCallCountRef.current = currentCallCount
+    previousMyLinesRef.current = currentMyLines
+    previousRemoteLinesRef.current = currentRemoteLines
+    previousActivePlayerIdRef.current = currentActivePlayerId
+    previousGameOverRef.current = isGameOver
+    previousSecondsRef.current = state.turnSecondsRemaining
   }, [state, synth])
 
   return {

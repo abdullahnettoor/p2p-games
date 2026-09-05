@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react'
 import { BingoMatchCoordinator, PlayerSummary } from '../state/BingoMatchCoordinator'
 import { useBingoMatch } from '../state/useBingoMatch'
 import { useBingoAudio } from '../hooks/useBingoAudio'
+import { useBingoTurnAttention } from '../hooks/useBingoTurnAttention'
 import { getCalls } from '../engine'
 import { BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
 import { BingoBoardView } from './BingoBoardView'
@@ -13,6 +14,7 @@ import { BingoTurnTimer } from './BingoTurnTimer'
 import { BingoSoundToggle } from './BingoSoundToggle'
 import { BingoReactionBar } from './BingoReactionBar'
 import { BingoReactionOverlay } from './BingoReactionOverlay'
+import { BingoMatchNotes } from './BingoMatchNotes'
 import { BingoGameOverModal } from './BingoGameOverModal'
 import { BingoReconnectionBanner } from './BingoReconnectionBanner'
 import { cn } from '@/lib/utils'
@@ -84,6 +86,12 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
       ? localPlayer
       : remotePlayer
     : null
+
+  useBingoTurnAttention({
+    activePlayerId: state.gameState.activePlayerId,
+    localPlayerId: localPlayer.id,
+    secondsRemaining: state.turnSecondsRemaining,
+  })
 
   return (
     <div className={cn(styles.tokenScope, styles.matchSurface, className)}>
@@ -203,7 +211,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
             {calls.length === 0 ? (
               <span className={styles.turnInstruction}>No Calls yet.</span>
             ) : (
-              calls.slice(-10).map((call, index, recentCalls) => {
+              calls.slice(-4).map((call, index, recentCalls) => {
                 const caller = playersById[call.playerId]
                 const ink = getBingoInkPresentation(caller.role)
                 return (
@@ -222,6 +230,8 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
             )}
           </div>
         </section>
+
+        <BingoMatchNotes history={state.gameState.history} playersById={playersById} />
       </main>
 
       <div className={styles.reactionDock}>

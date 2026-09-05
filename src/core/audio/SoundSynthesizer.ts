@@ -15,6 +15,9 @@ export class SoundSynthesizer {
   private audioContext: AudioContext | null = null
   private readonly storageKey: string
   private readonly audioContextFactory?: () => AudioContext | null
+  private activePriority = 0
+  private priorityUntil = 0
+  private activeTones = new Set<{ oscillator: OscillatorNode; priority: number }>()
 
   constructor(options?: SoundSynthesizerOptions) {
     this.storageKey = options?.storageKey ?? DEFAULT_STORAGE_KEY
@@ -94,6 +97,35 @@ export class SoundSynthesizer {
     return null
   }
 
+  private canSchedule(
+    priority: number,
+    durationSeconds: number,
+    startTimeOffsetSeconds: number
+  ): boolean {
+    const now = Date.now()
+    if (now >= this.priorityUntil) this.activePriority = 0
+    if (priority < this.activePriority) return false
+
+    this.activePriority = priority
+    this.priorityUntil = Math.max(
+      this.priorityUntil,
+      now + (startTimeOffsetSeconds + durationSeconds) * 1000
+    )
+    return true
+  }
+
+  private stopLowerPriorityTones(priority: number, stopTime: number): void {
+    for (const tone of this.activeTones) {
+      if (tone.priority >= priority) continue
+      this.activeTones.delete(tone)
+      try {
+        tone.oscillator.stop(stopTime)
+      } catch {
+        // The oscillator may have already ended.
+      }
+    }
+  }
+
   /**
    * Helper to play a single tone with optional frequency drop and exponential decay.
    */
@@ -103,15 +135,19 @@ export class SoundSynthesizer {
     durationSeconds: number,
     initialGain: number = 0.2,
     pitchDropTo?: number,
-    startTimeOffsetSeconds: number = 0
+    startTimeOffsetSeconds: number = 0,
+    priority: number = 0
   ): void {
     if (this.muted) return
 
     const ctx = this.getAudioContext()
-    if (!ctx) return
+    const interruptsLowerPriority =
+      priority > this.activePriority && Date.now() < this.priorityUntil
+    if (!ctx || !this.canSchedule(priority, durationSeconds, startTimeOffsetSeconds)) return
 
     try {
       const now = ctx.currentTime + startTimeOffsetSeconds
+      if (interruptsLowerPriority) this.stopLowerPriorityTones(priority, now)
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
 
@@ -130,6 +166,9 @@ export class SoundSynthesizer {
 
       osc.start(now)
       osc.stop(now + durationSeconds)
+      const tone = { oscillator: osc, priority }
+      this.activeTones.add(tone)
+      osc.onended = () => this.activeTones.delete(tone)
     } catch {
       // Ignore synthesis errors
     }
@@ -139,25 +178,71 @@ export class SoundSynthesizer {
    * Crisp, tactile pop/click for number selection.
    */
   public playNumberSelect(): void {
-    this.playTone(560, 'sine', 0.08, 0.25, 320)
+    this.playTone(560, 'sine', 0.08, 0.25, 320, 0, 2)
+  }
+
+  /**
+   * Short pencil-like scratch for a local Call.
+   */
+  public playPencilScratch(): void {
+    this.playTone(230, 'triangle', 0.06, 0.12, 150, 0, 2)
+    this.playTone(380, 'sine', 0.04, 0.06, 250, 0.025, 2)
+  }
+
+  /**
+   * Light paper flick for a Call arriving from the other Player.
+   */
+  public playPaperFlick(): void {
+    this.playTone(720, 'sine', 0.045, 0.1, 420, 0, 2)
+    this.playTone(980, 'triangle', 0.06, 0.07, 640, 0.035, 2)
   }
 
   /**
    * Subtle two-tone chime alerting player that turn changed.
    */
   public playTurnChange(): void {
-    this.playTone(440, 'sine', 0.07, 0.18)
-    this.playTone(660, 'sine', 0.12, 0.2, undefined, 0.07)
+    this.playTone(440, 'sine', 0.07, 0.18, undefined, 0, 2)
+    this.playTone(660, 'sine', 0.12, 0.2, undefined, 0.07, 2)
   }
 
   /**
-   * Harmonious chord when completing a BINGO line.
+   * Restrained stamp impact for a completed line.
+   */
+  public playLineStamp(): void {
+    this.playTone(155, 'triangle', 0.08, 0.18, 90, 0, 3)
+    this.playTone(520, 'sine', 0.12, 0.1, 360, 0.04, 3)
+  }
+
+  /**
+   * Backwards-compatible line completion sound for Pass & Play.
    */
   public playLineComplete(): void {
-    const notes = [523.25, 659.25, 783.99, 1046.5] // C5, E5, G5, C6
-    notes.forEach((freq, idx) => {
-      this.playTone(freq, 'triangle', 0.35, 0.15, undefined, idx * 0.04)
+    this.playLineStamp()
+  }
+
+  /**
+   * Short flourish when the local Match reaches B-I-N-G-O.
+   */
+  public playBingo(): void {
+    const notes = [523.25, 659.25, 783.99, 1046.5]
+    notes.forEach((freq, index) => {
+      this.playTone(freq, 'triangle', 0.22, 0.13, undefined, index * 0.06, 4)
     })
+  }
+
+  /**
+   * Balanced cadence for a draw.
+   */
+  public playDraw(): void {
+    this.playTone(392, 'sine', 0.2, 0.12, undefined, 0, 4)
+    this.playTone(523.25, 'sine', 0.24, 0.12, undefined, 0.16, 4)
+  }
+
+  /**
+   * A tiny tick for the active Player's final three seconds.
+   */
+  public playFinalThreeSecondTick(): void {
+    this.playTone(880, 'sine', 0.045, 0.09, 720, 0, 2)
   }
 
   /**
@@ -175,7 +260,7 @@ export class SoundSynthesizer {
     ]
 
     notes.forEach((n) => {
-      this.playTone(n.freq, 'sine', 0.4, 0.2, undefined, n.delay)
+      this.playTone(n.freq, 'sine', 0.4, 0.2, undefined, n.delay, 4)
     })
   }
 
@@ -191,7 +276,7 @@ export class SoundSynthesizer {
     ]
 
     notes.forEach((n) => {
-      this.playTone(n.freq, 'sine', 0.35, 0.15, undefined, n.delay)
+      this.playTone(n.freq, 'sine', 0.35, 0.15, undefined, n.delay, 4)
     })
   }
 
@@ -199,7 +284,7 @@ export class SoundSynthesizer {
    * Light bubble pop for transient emoji reactions.
    */
   public playReaction(): void {
-    this.playTone(680, 'sine', 0.07, 0.15, 900)
+    this.playTone(680, 'sine', 0.07, 0.15, 900, 0, 1)
   }
 }
 
