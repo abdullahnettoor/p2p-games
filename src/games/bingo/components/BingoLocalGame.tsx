@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { BingoBoard, BingoState } from '../types'
-import { bingoGameDefinition } from '../engine'
+import { bingoGameDefinition, getCalledNumbers } from '../engine'
 import { BingoBoardSetup } from './BingoBoardSetup'
 import { BingoBoardView } from './BingoBoardView'
 import { BingoLetterTracker } from './BingoLetterTracker'
@@ -45,7 +45,7 @@ export const BingoLocalGame: React.FC = () => {
     const validation = bingoGameDefinition.validateMove(
       gameState,
       {
-        type: 'PICK_NUMBER',
+        type: 'CALL_NUMBER',
         number: num,
         playerId: gameState.activePlayerId,
       },
@@ -55,7 +55,7 @@ export const BingoLocalGame: React.FC = () => {
     if (!validation.valid) return
 
     const nextState = bingoGameDefinition.applyMove(gameState, {
-      type: 'PICK_NUMBER',
+      type: 'CALL_NUMBER',
       number: num,
       playerId: gameState.activePlayerId,
     })
@@ -111,6 +111,7 @@ export const BingoLocalGame: React.FC = () => {
   const activePlayerName = isP1Turn ? 'Player 1' : 'Player 2'
   const activeBoard = isP1Turn ? gameState.boards.p1 : gameState.boards.p2
   const activeDetails = isP1Turn ? gameState.lineDetails.p1 : gameState.lineDetails.p2
+  const calledNumbers = getCalledNumbers(gameState.history)
 
   return (
     <div className="flex flex-col items-center gap-6 py-4 max-w-4xl mx-auto w-full">
@@ -194,7 +195,7 @@ export const BingoLocalGame: React.FC = () => {
           </div>
           <BingoBoardView
             board={activeBoard}
-            calledNumbers={gameState.calledNumbers}
+            calledNumbers={calledNumbers}
             lineDetails={activeDetails}
             isMyTurn={stage === 'active'}
             onPickNumber={handlePickNumber}
@@ -220,7 +221,7 @@ export const BingoLocalGame: React.FC = () => {
           {showOpponentBoard ? (
             <BingoBoardView
               board={isP1Turn ? gameState.boards.p2 : gameState.boards.p1}
-              calledNumbers={gameState.calledNumbers}
+              calledNumbers={calledNumbers}
               lineDetails={isP1Turn ? gameState.lineDetails.p2 : gameState.lineDetails.p1}
               isMyTurn={false}
               onPickNumber={() => {}}
@@ -241,19 +242,19 @@ export const BingoLocalGame: React.FC = () => {
       {/* Called Numbers History */}
       <div className="w-full max-w-4xl p-4 bg-slate-900/60 rounded-2xl border border-slate-800/80 space-y-2">
         <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-          <span>Called Numbers ({gameState.calledNumbers.length}/25)</span>
+          <span>Called Numbers ({calledNumbers.length}/25)</span>
           <span className="text-[11px] text-slate-500 font-normal">Most recent at right</span>
         </div>
         <div className="flex flex-wrap gap-1.5 min-h-[32px] items-center">
-          {gameState.calledNumbers.length === 0 ? (
+          {calledNumbers.length === 0 ? (
             <span className="text-xs text-slate-500 italic">No numbers called yet</span>
           ) : (
-            gameState.calledNumbers.map((num, i) => (
+            calledNumbers.map((num, i) => (
               <span
                 key={i}
                 className={cn(
                   'px-2.5 py-1 rounded-lg text-xs font-bold border',
-                  i === gameState.calledNumbers.length - 1
+                  i === calledNumbers.length - 1
                     ? 'bg-emerald-500 text-slate-950 border-emerald-400 animate-pulse'
                     : 'bg-slate-800 text-slate-300 border-slate-700'
                 )}

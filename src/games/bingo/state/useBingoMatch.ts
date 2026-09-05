@@ -5,6 +5,7 @@ export function useBingoMatch(coordinator: BingoMatchCoordinator): {
   state: BingoMatchState
   isMyTurn: boolean
   submitMove: (number: number) => boolean
+  passTurn: () => boolean
 } {
   const state = useSyncExternalStore(
     useCallback((notify) => coordinator.subscribe(notify), [coordinator]),
@@ -16,10 +17,12 @@ export function useBingoMatch(coordinator: BingoMatchCoordinator): {
     (number: number) => coordinator.submitMove(number),
     [coordinator]
   )
+  const passTurn = useCallback(() => coordinator.passTurn(), [coordinator])
 
   return {
     state,
     isMyTurn: coordinator.isMyTurn,
     submitMove,
+    passTurn,
   }
 }

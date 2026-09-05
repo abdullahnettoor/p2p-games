@@ -3,7 +3,7 @@ import { createLoopbackTransportPair } from '@/core/transport/LoopbackTransport'
 import { BingoMatchCoordinator } from './BingoMatchCoordinator'
 import { MatchStartEvent } from '@/core/lobby/types'
 import { BingoBoard } from '../types'
-import { generateRandomBingoBoard } from '../engine'
+import { generateRandomBingoBoard, getCalledNumbers } from '../engine'
 
 describe('BingoMatchCoordinator', () => {
   beforeEach(() => {
@@ -11,6 +11,7 @@ describe('BingoMatchCoordinator', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.useRealTimers()
   })
 
@@ -57,7 +58,7 @@ describe('BingoMatchCoordinator', () => {
     expect(hostCoordinator.state.turnSecondsRemaining).toBe(30)
     expect(guestCoordinator.state.turnSecondsRemaining).toBe(30)
     expect(hostCoordinator.state.gameState.status).toBe('active')
-    expect(hostCoordinator.state.gameState.calledNumbers).toEqual([])
+    expect(getCalledNumbers(hostCoordinator.state.gameState.history)).toEqual([])
   })
 
   it('submits a valid move and synchronizes boards symmetrically', () => {
@@ -67,8 +68,17 @@ describe('BingoMatchCoordinator', () => {
     const success = hostCoordinator.submitMove(pickedNumber)
 
     expect(success).toBe(true)
-    expect(hostCoordinator.state.gameState.calledNumbers).toEqual([pickedNumber])
-    expect(guestCoordinator.state.gameState.calledNumbers).toEqual([pickedNumber])
+    expect(getCalledNumbers(hostCoordinator.state.gameState.history)).toEqual([pickedNumber])
+    expect(getCalledNumbers(guestCoordinator.state.gameState.history)).toEqual([pickedNumber])
+    expect(hostCoordinator.state.gameState.history).toEqual([
+      {
+        type: 'call',
+        number: pickedNumber,
+        playerId: hostCoordinator.state.localPlayer.id,
+        sequence: 1,
+      },
+    ])
+    expect(guestCoordinator.state.gameState.history).toEqual(hostCoordinator.state.gameState.history)
 
     // Turn should switch to Guest
     expect(hostCoordinator.isMyTurn).toBe(false)
@@ -82,13 +92,75 @@ describe('BingoMatchCoordinator', () => {
 
     // Guest tries to move on Host's turn
     expect(guestCoordinator.submitMove(10)).toBe(false)
-    expect(guestCoordinator.state.gameState.calledNumbers).toEqual([])
+    expect(getCalledNumbers(guestCoordinator.state.gameState.history)).toEqual([])
 
     // Host picks an invalid number (< 1 or > 25)
     expect(hostCoordinator.submitMove(99)).toBe(false)
   })
 
-  it('automatically auto-selects a random valid number when turn timer expires', () => {
+  it('rejects malformed or spoofed remote Moves', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { hostCoordinator, hostTransport } = setupCoordinators()
+
+    hostTransport.receiveMessage({
+      type: 'move',
+      payload: {
+        move: {
+          type: 'NOT_A_MOVE',
+          playerId: hostCoordinator.state.localPlayer.id,
+        },
+        playerId: hostCoordinator.state.localPlayer.id,
+      },
+    })
+
+    expect(hostCoordinator.state.gameState.history).toEqual([])
+    expect(hostCoordinator.isMyTurn).toBe(true)
+    expect(warn).toHaveBeenCalledWith('Received malformed move from opponent')
+  })
+
+  it('lets each active Player Pass and synchronizes consecutive Passes', () => {
+    const { hostCoordinator, guestCoordinator } = setupCoordinators()
+
+    expect(hostCoordinator.passTurn()).toBe(true)
+    expect(guestCoordinator.state.gameState.history).toEqual([
+      {
+        type: 'pass',
+        playerId: hostCoordinator.state.localPlayer.id,
+        reason: 'voluntary',
+        sequence: 1,
+      },
+    ])
+    expect(hostCoordinator.isMyTurn).toBe(false)
+    expect(guestCoordinator.isMyTurn).toBe(true)
+
+    expect(guestCoordinator.passTurn()).toBe(true)
+    expect(hostCoordinator.state.gameState.history).toEqual([
+      {
+        type: 'pass',
+        playerId: hostCoordinator.state.localPlayer.id,
+        reason: 'voluntary',
+        sequence: 1,
+      },
+      {
+        type: 'pass',
+        playerId: guestCoordinator.state.localPlayer.id,
+        reason: 'voluntary',
+        sequence: 2,
+      },
+    ])
+    expect(hostCoordinator.isMyTurn).toBe(true)
+    expect(guestCoordinator.isMyTurn).toBe(false)
+  })
+
+  it('rejects a Pass from the Player who does not have the turn', () => {
+    const { hostCoordinator, guestCoordinator } = setupCoordinators()
+
+    expect(guestCoordinator.passTurn()).toBe(false)
+    expect(hostCoordinator.state.gameState.history).toEqual([])
+    expect(guestCoordinator.state.gameState.history).toEqual([])
+  })
+
+  it('passes the turn without calling a number when the timer expires', () => {
     const { hostCoordinator, guestCoordinator } = setupCoordinators()
 
     expect(hostCoordinator.isMyTurn).toBe(true)
@@ -101,9 +173,17 @@ describe('BingoMatchCoordinator', () => {
     // Advance remaining 20 seconds
     vi.advanceTimersByTime(20000)
 
-    // Host should have automatically picked a number and passed turn to Guest
-    expect(hostCoordinator.state.gameState.calledNumbers.length).toBe(1)
-    expect(guestCoordinator.state.gameState.calledNumbers.length).toBe(1)
+    expect(getCalledNumbers(hostCoordinator.state.gameState.history)).toEqual([])
+    expect(getCalledNumbers(guestCoordinator.state.gameState.history)).toEqual([])
+    expect(hostCoordinator.state.gameState.history).toEqual([
+      {
+        type: 'pass',
+        playerId: hostCoordinator.state.localPlayer.id,
+        reason: 'timeout',
+        sequence: 1,
+      },
+    ])
+    expect(guestCoordinator.state.gameState.history).toEqual(hostCoordinator.state.gameState.history)
     expect(hostCoordinator.isMyTurn).toBe(false)
     expect(guestCoordinator.isMyTurn).toBe(true)
   })
@@ -219,6 +299,8 @@ describe('BingoMatchCoordinator', () => {
     expect(cached?.localPlayer.id).toBe(hostCoordinator.state.localPlayer.id)
     expect(cached?.remotePlayer.id).toBe(hostCoordinator.state.remotePlayer.id)
     expect(cached?.status).toBe('active')
+    expect(cached?.history).toEqual([])
+    expect(cached?.turnSecondsRemaining).toBe(30)
   })
 
   it('triggers 30s reconnection grace period on player disconnection and awards victory by forfeit upon expiry', () => {
@@ -271,29 +353,47 @@ describe('BingoMatchCoordinator', () => {
 
     const pickedNumber = hostCoordinator.state.gameState.boards[hostCoordinator.state.localPlayer.id][0]
     hostCoordinator.submitMove(pickedNumber)
+    guestCoordinator.passTurn()
 
-    // Clear guest called numbers to simulate desync
     guestCoordinator.state = {
       ...guestCoordinator.state,
       gameState: {
         ...guestCoordinator.state.gameState,
-        calledNumbers: [],
+        history: [],
+        activePlayerId: hostCoordinator.state.localPlayer.id,
       },
     }
-    expect(guestCoordinator.state.gameState.calledNumbers).toEqual([])
+    expect(guestCoordinator.state.gameState.history).toEqual([])
 
-    // Guest receives sync message
     guestTransport.receiveMessage({
       type: 'sync',
       payload: {
-        calledNumbers: [pickedNumber],
-        activePlayerId: guestCoordinator.state.localPlayer.id,
+        state: {
+          history: hostCoordinator.state.gameState.history,
+          turnSecondsRemaining: 17,
+        },
         timestamp: Date.now(),
       },
     })
 
-    expect(guestCoordinator.state.gameState.calledNumbers).toEqual([pickedNumber])
-    expect(guestCoordinator.state.gameState.activePlayerId).toBe(guestCoordinator.state.localPlayer.id)
+    expect(getCalledNumbers(guestCoordinator.state.gameState.history)).toEqual([pickedNumber])
+    expect(guestCoordinator.state.gameState.history).toEqual(hostCoordinator.state.gameState.history)
+    expect(guestCoordinator.state.gameState.history).toEqual([
+      {
+        type: 'call',
+        number: pickedNumber,
+        playerId: hostCoordinator.state.localPlayer.id,
+        sequence: 1,
+      },
+      {
+        type: 'pass',
+        playerId: guestCoordinator.state.localPlayer.id,
+        reason: 'voluntary',
+        sequence: 2,
+      },
+    ])
+    expect(guestCoordinator.state.gameState.activePlayerId).toBe(hostCoordinator.state.localPlayer.id)
+    expect(guestCoordinator.state.turnSecondsRemaining).toBe(17)
   })
 
   it('negotiates rematch lifecycle in-place over the transport', () => {

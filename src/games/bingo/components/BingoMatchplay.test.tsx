@@ -6,6 +6,7 @@ import { BingoMatchCoordinator } from '../state/BingoMatchCoordinator'
 import { createLoopbackTransportPair } from '@/core/transport/LoopbackTransport'
 import { MatchStartEvent } from '@/core/lobby/types'
 import { BingoBoard } from '../types'
+import { getCalledNumbers } from '../engine'
 
 describe('BingoMatchplay', () => {
   beforeEach(() => {
@@ -72,10 +73,31 @@ describe('BingoMatchplay', () => {
       fireEvent.click(button7)
     })
 
-    expect(hostCoordinator.state.gameState.calledNumbers).toContain(7)
-    expect(guestCoordinator.state.gameState.calledNumbers).toContain(7)
+    expect(getCalledNumbers(hostCoordinator.state.gameState.history)).toContain(7)
+    expect(getCalledNumbers(guestCoordinator.state.gameState.history)).toContain(7)
 
     // Turn should now be opponent's
+    expect(screen.getByText(/Bob's Turn/i)).toBeInTheDocument()
+  })
+
+  it('lets the active Player pass the turn', () => {
+    const { hostCoordinator, guestCoordinator } = createTestCoordinators()
+
+    render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: /pass turn/i }))
+    })
+
+    expect(hostCoordinator.state.gameState.history).toEqual([
+      {
+        type: 'pass',
+        playerId: hostCoordinator.state.localPlayer.id,
+        reason: 'voluntary',
+        sequence: 1,
+      },
+    ])
+    expect(guestCoordinator.state.gameState.history).toEqual(hostCoordinator.state.gameState.history)
     expect(screen.getByText(/Bob's Turn/i)).toBeInTheDocument()
   })
 

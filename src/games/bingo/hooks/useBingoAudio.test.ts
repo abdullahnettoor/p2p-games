@@ -21,7 +21,7 @@ describe('useBingoAudio', () => {
     const defaultGameState: BingoState = {
       players: ['p1', 'p2'],
       boards: { p1: [], p2: [] },
-      calledNumbers: [],
+      history: [],
       activePlayerId: 'p1',
       completedLines: { p1: 0, p2: 0 },
       lineDetails: {
@@ -48,7 +48,10 @@ describe('useBingoAudio', () => {
 
   it('triggers playNumberSelect when a new number is called', () => {
     let state = createMockMatchState({
-      gameState: { ...createMockMatchState().gameState, calledNumbers: [5] },
+      gameState: {
+        ...createMockMatchState().gameState,
+        history: [{ type: 'call', number: 5, playerId: 'p1', sequence: 1 }],
+      },
     })
 
     const { rerender } = renderHook(({ s }) => useBingoAudio(s, mockSynth), {
@@ -61,7 +64,13 @@ describe('useBingoAudio', () => {
     // Add another number
     state = {
       ...state,
-      gameState: { ...state.gameState, calledNumbers: [5, 12] },
+      gameState: {
+        ...state.gameState,
+        history: [
+          ...state.gameState.history,
+          { type: 'call', number: 12, playerId: 'p2', sequence: 2 },
+        ],
+      },
     }
     rerender({ s: state })
 

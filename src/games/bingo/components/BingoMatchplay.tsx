@@ -14,6 +14,7 @@ import { BingoGameOverModal } from './BingoGameOverModal'
 import { BingoReconnectionBanner } from './BingoReconnectionBanner'
 import { ArrowLeft, User, Sparkles, Hash } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getCalledNumbers } from '../engine'
 
 export interface BingoMatchplayProps {
   coordinator: BingoMatchCoordinator
@@ -26,7 +27,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
   onExit,
   className,
 }) => {
-  const { state, isMyTurn, submitMove } = useBingoMatch(coordinator)
+  const { state, isMyTurn, submitMove, passTurn } = useBingoMatch(coordinator)
   const { isMuted, toggleMute } = useBingoAudio(state)
 
   const localPlayer = state.localPlayer
@@ -35,7 +36,7 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
   const myLines = state.gameState.completedLines[localPlayer.id] || 0
   const myLineDetails = state.gameState.lineDetails[localPlayer.id]
   const remoteLines = state.gameState.completedLines[remotePlayer.id] || 0
-  const calledNumbers = state.gameState.calledNumbers
+  const calledNumbers = getCalledNumbers(state.gameState.history)
   const isGameOver = state.winResult.isGameOver
 
   const activePlayerName = isMyTurn ? localPlayer.name : remotePlayer.name
@@ -165,6 +166,16 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
             ? 'Your Turn! Click any uncalled number on your board to call it.'
             : `Waiting for ${remotePlayer.name} to pick a number...`}
         </span>
+        {isMyTurn ? (
+          <button
+            type="button"
+            onClick={passTurn}
+            disabled={isGameOver || state.isReconnecting}
+            className="ml-2 rounded-lg border border-emerald-700 px-3 py-2 text-xs font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Pass turn
+          </button>
+        ) : null}
       </div>
 
       {/* B-I-N-G-O Letters Tracker */}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { SoundSynthesizer, defaultSoundSynthesizer } from '@/core/audio/SoundSynthesizer'
 import { BingoMatchState } from '../state/BingoMatchCoordinator'
+import { getCalledNumbers } from '../engine'
 
 export interface UseBingoAudioResult {
   isMuted: boolean
@@ -42,7 +43,7 @@ export function useBingoAudio(
   useEffect(() => {
     if (!state) return
 
-    const currentCalledLength = state.gameState.calledNumbers.length
+    const currentCalledLength = getCalledNumbers(state.gameState.history).length
     const currentActivePlayerId = state.gameState.activePlayerId
     const localId = state.localPlayer.id
     const remoteId = state.remotePlayer.id

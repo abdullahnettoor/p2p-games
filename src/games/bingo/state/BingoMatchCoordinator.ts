@@ -1,8 +1,8 @@
 import { ITransport, TransportMessage } from '@/core/transport/types'
 import { MatchStartEvent } from '@/core/lobby/types'
 import { WinResult } from '@/core/games/types'
-import { BingoBoard, BingoMove, BingoState } from '../types'
-import { bingoGameDefinition, getAvailableNumbers, TOTAL_NUMBERS } from '../engine'
+import { BingoBoard, BingoMove, BingoState, BingoTurnEvent } from '../types'
+import { bingoGameDefinition, parseBingoMove, replayBingoHistory } from '../engine'
 
 export interface PlayerSummary {
   id: string
@@ -32,6 +32,11 @@ export interface BingoMatchCoordinatorOptions {
   enableAutoTurnTimer?: boolean
 }
 
+interface BingoSyncState {
+  history: BingoTurnEvent[]
+  turnSecondsRemaining: number
+}
+
 export interface BingoMatchState {
   gameState: BingoState
   turnSecondsRemaining: number
@@ -49,7 +54,8 @@ export interface CachedBingoMatch {
   localPlayer: PlayerSummary
   remotePlayer: PlayerSummary
   status: BingoState['status']
-  calledNumbers: number[]
+  history: BingoTurnEvent[]
+  turnSecondsRemaining: number
   matchStartEvent: MatchStartEvent<BingoBoard>
   updatedAt: number
 }
@@ -182,7 +188,15 @@ export class BingoMatchCoordinator {
     const unsubMsg = this.transport.onMessage((message) => {
       if (message.type === 'move') {
         const movePayload = message.payload
-        const move = movePayload.move as BingoMove
+        const move = parseBingoMove(movePayload.move)
+        if (
+          !move ||
+          movePayload.playerId !== move.playerId ||
+          move.playerId !== this.state.remotePlayer.id
+        ) {
+          console.warn('Received malformed move from opponent')
+          return
+        }
 
         const validation = bingoGameDefinition.validateMove(
           this.state.gameState,
@@ -194,7 +208,7 @@ export class BingoMatchCoordinator {
           return
         }
 
-        this.processMove(move, false)
+        this.processMove(move)
       } else if (message.type === 'reaction') {
         const payload = message.payload
         const reaction: BingoReaction = {
@@ -229,7 +243,7 @@ export class BingoMatchCoordinator {
             this.notify()
           }
         } else if (message.type === 'sync') {
-          this.reconcileState(message.payload.calledNumbers, message.payload.activePlayerId)
+          this.reconcileState(message.payload.state)
         }
       })
 
@@ -262,37 +276,69 @@ export class BingoMatchCoordinator {
         this.transport.send({
           type: 'sync',
           payload: {
-            calledNumbers: this.state.gameState.calledNumbers,
-            activePlayerId: this.state.gameState.activePlayerId,
+            state: {
+              history: this.state.gameState.history,
+              turnSecondsRemaining: this.state.turnSecondsRemaining,
+            } satisfies BingoSyncState,
             timestamp: Date.now(),
           },
         })
       }
     }
 
-    private reconcileState(remoteCalledNumbers: number[], activePlayerId: string): void {
-      const currentCalled = new Set(this.state.gameState.calledNumbers)
-      let updatedGameState = this.state.gameState
+    private reconcileState(value: unknown): void {
+      if (!value || typeof value !== 'object') return
 
-      for (const num of remoteCalledNumbers) {
-        if (!currentCalled.has(num)) {
-          const move: BingoMove = {
-            type: 'PICK_NUMBER',
-            number: num,
-            playerId: updatedGameState.activePlayerId,
-          }
-          updatedGameState = bingoGameDefinition.applyMove(updatedGameState, move)
-        }
+      const syncState = value as Record<string, unknown>
+      const updatedGameState = replayBingoHistory(
+        {
+          players: [this.matchStartEvent.hostId, this.matchStartEvent.guestId],
+          setupConfigs: {
+            [this.matchStartEvent.hostId]: { board: this.matchStartEvent.hostSetup },
+            [this.matchStartEvent.guestId]: { board: this.matchStartEvent.guestSetup },
+          },
+          startingPlayerId: this.matchStartEvent.startingPlayerId,
+        },
+        syncState.history
+      )
+      if (!updatedGameState) {
+        console.warn('Ignored invalid BINGO sync history')
+        return
+      }
+
+      const localHistory = this.state.gameState.history
+      const history = updatedGameState.history
+      const historiesAgree = localHistory.every((event, index) => {
+        const remoteEvent = history[index]
+        return (
+          remoteEvent !== undefined &&
+          event.type === remoteEvent.type &&
+          event.playerId === remoteEvent.playerId &&
+          event.sequence === remoteEvent.sequence &&
+          (event.type === 'call'
+            ? remoteEvent.type === 'call' && event.number === remoteEvent.number
+            : remoteEvent.type === 'pass' && event.reason === remoteEvent.reason)
+        )
+      })
+      if (!historiesAgree || history.length < localHistory.length) {
+        console.warn('Ignored incompatible BINGO sync history')
+        return
       }
 
       const winResult = bingoGameDefinition.checkWin(updatedGameState)
+      const remoteTurnSecondsRemaining = syncState.turnSecondsRemaining
+      const syncedSeconds =
+        typeof remoteTurnSecondsRemaining === 'number' && Number.isFinite(remoteTurnSecondsRemaining)
+          ? Math.max(0, Math.min(this.turnDurationSeconds, Math.floor(remoteTurnSecondsRemaining)))
+          : this.state.turnSecondsRemaining
 
       this.state = {
         ...this.state,
-        gameState: {
-          ...updatedGameState,
-          activePlayerId,
-        },
+        gameState: updatedGameState,
+        turnSecondsRemaining:
+          history.length === localHistory.length
+            ? Math.min(this.state.turnSecondsRemaining, syncedSeconds)
+            : syncedSeconds,
         winResult,
       }
 
@@ -305,8 +351,10 @@ export class BingoMatchCoordinator {
       }
 
       this.persistActiveMatch()
+      this.startTurnTimer()
       this.notify()
     }
+
 
     private setAndSendRematch(rematchState: RematchState, intent: 'request' | 'accept' | 'decline'): void {
       this.state = {
@@ -348,7 +396,8 @@ export class BingoMatchCoordinator {
         localPlayer: this.state.localPlayer,
         remotePlayer: this.state.remotePlayer,
         status: this.state.gameState.status,
-        calledNumbers: this.state.gameState.calledNumbers,
+        history: this.state.gameState.history,
+        turnSecondsRemaining: this.state.turnSecondsRemaining,
         matchStartEvent: this.matchStartEvent,
         updatedAt: Date.now(),
       }
@@ -363,23 +412,37 @@ export class BingoMatchCoordinator {
     if (!this.isMyTurn) return false
     if (this.state.gameState.status !== 'active') return false
 
-    const move: BingoMove = {
-      type: 'PICK_NUMBER',
+    return this.submitBingoMove({
+      type: 'CALL_NUMBER',
       number,
       playerId: this.state.localPlayer.id,
-    }
+    })
+  }
+
+  public passTurn(): boolean {
+    return this.submitPass('voluntary')
+  }
+
+  private submitPass(reason: 'voluntary' | 'timeout'): boolean {
+    return this.submitBingoMove({
+      type: 'PASS',
+      playerId: this.state.localPlayer.id,
+      reason,
+    })
+  }
+
+  private submitBingoMove(move: BingoMove): boolean {
+    if (this.state.isReconnecting) return false
+    if (!this.isMyTurn) return false
+    if (this.state.gameState.status !== 'active') return false
 
     const validation = bingoGameDefinition.validateMove(
       this.state.gameState,
       move,
       this.state.localPlayer.id
     )
+    if (!validation.valid) return false
 
-    if (!validation.valid) {
-      return false
-    }
-
-    // Broadcast move to remote player
     this.transport.send({
       type: 'move',
       payload: {
@@ -389,11 +452,11 @@ export class BingoMatchCoordinator {
       },
     })
 
-    this.processMove(move, true)
+    this.processMove(move)
     return true
   }
 
-  private processMove(move: BingoMove, _isLocal: boolean): void {
+  private processMove(move: BingoMove): void {
     const nextState = bingoGameDefinition.applyMove(this.state.gameState, move)
     const winResult = bingoGameDefinition.checkWin(nextState)
 
@@ -534,23 +597,16 @@ export class BingoMatchCoordinator {
   }
 
   private handleTurnTimeout(): void {
-    // Only the active Player auto-selects and dispatches the Move
     if (this.isMyTurn && this.state.gameState.status === 'active') {
-      const availableNumbers = getAvailableNumbers(this.state.gameState.calledNumbers)
-
-      if (availableNumbers.length > 0) {
-        const randomIndex = Math.floor(Math.random() * availableNumbers.length)
-        const autoNumber = availableNumbers[randomIndex]
-        this.submitMove(autoNumber)
-      }
-    } else {
-      // Non-active player resets local countdown while waiting for the active player's timeout move
-      this.state = {
-        ...this.state,
-        turnSecondsRemaining: 0,
-      }
-      this.notify()
+      this.submitPass('timeout')
+      return
     }
+
+    this.state = {
+      ...this.state,
+      turnSecondsRemaining: 0,
+    }
+    this.notify()
   }
 
   public destroy(): void {

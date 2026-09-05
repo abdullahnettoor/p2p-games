@@ -4,6 +4,7 @@ import {
   validateBingoBoard,
   calculateCompletedLines,
   bingoGameDefinition,
+  getCalledNumbers,
 } from './engine'
 import type { BingoSetupConfig, BingoMove } from './types'
 
@@ -103,7 +104,7 @@ describe('BINGO Game Engine', () => {
       expect(state.status).toBe('active')
       expect(state.players).toEqual([hostId, guestId])
       expect(state.activePlayerId).toBe(hostId)
-      expect(state.calledNumbers).toEqual([])
+      expect(getCalledNumbers(state.history)).toEqual([])
       expect(state.winnerId).toBeNull()
       expect(state.completedLines[hostId]).toBe(0)
       expect(state.completedLines[guestId]).toBe(0)
@@ -116,43 +117,115 @@ describe('BINGO Game Engine', () => {
       })
 
       // Valid move by active player
-      const validMove: BingoMove = { type: 'PICK_NUMBER', number: 7, playerId: hostId }
+      const validMove: BingoMove = { type: 'CALL_NUMBER', number: 7, playerId: hostId }
       expect(bingoGameDefinition.validateMove(state, validMove, hostId).valid).toBe(true)
 
       // Invalid: Move by non-active player
-      const outOfTurnMove: BingoMove = { type: 'PICK_NUMBER', number: 7, playerId: guestId }
+      const outOfTurnMove: BingoMove = { type: 'CALL_NUMBER', number: 7, playerId: guestId }
       expect(bingoGameDefinition.validateMove(state, outOfTurnMove, guestId).valid).toBe(false)
 
       // Invalid: Out of range number
-      const outOfRangeMove: BingoMove = { type: 'PICK_NUMBER', number: 30, playerId: hostId }
+      const outOfRangeMove: BingoMove = { type: 'CALL_NUMBER', number: 30, playerId: hostId }
       expect(bingoGameDefinition.validateMove(state, outOfRangeMove, hostId).valid).toBe(false)
+
+      const fractionalMove: BingoMove = { type: 'CALL_NUMBER', number: 1.5, playerId: hostId }
+      expect(bingoGameDefinition.validateMove(state, fractionalMove, hostId).valid).toBe(false)
 
       // Apply move and try calling same number again
       const nextState = bingoGameDefinition.applyMove(state, validMove)
-      const repeatMove: BingoMove = { type: 'PICK_NUMBER', number: 7, playerId: guestId }
+      const repeatMove: BingoMove = { type: 'CALL_NUMBER', number: 7, playerId: guestId }
       expect(bingoGameDefinition.validateMove(nextState, repeatMove, guestId).valid).toBe(false)
     })
 
-    it('applies move, switches active player, and updates lines', () => {
+    it('records Calls with their Player and deterministic sequence', () => {
       const state = bingoGameDefinition.init({
         players: [hostId, guestId],
         setupConfigs,
       })
 
-      const move1: BingoMove = { type: 'PICK_NUMBER', number: 1, playerId: hostId }
+      const move1: BingoMove = { type: 'CALL_NUMBER', number: 1, playerId: hostId }
       const state1 = bingoGameDefinition.applyMove(state, move1)
 
-      expect(state1.calledNumbers).toEqual([1])
+      expect(state1.history).toEqual([
+        { type: 'call', number: 1, playerId: hostId, sequence: 1 },
+      ])
       expect(state1.activePlayerId).toBe(guestId)
 
-      const move2: BingoMove = { type: 'PICK_NUMBER', number: 2, playerId: guestId }
+      const move2: BingoMove = { type: 'CALL_NUMBER', number: 2, playerId: guestId }
       const state2 = bingoGameDefinition.applyMove(state1, move2)
 
-      expect(state2.calledNumbers).toEqual([1, 2])
+      expect(state2.history).toEqual([
+        { type: 'call', number: 1, playerId: hostId, sequence: 1 },
+        { type: 'call', number: 2, playerId: guestId, sequence: 2 },
+      ])
       expect(state2.activePlayerId).toBe(hostId)
     })
 
-    it('triggers win condition when a player reaches 5 completed lines (B-I-N-G-O)', () => {
+    it('records voluntary and timeout Passes without calling a number', () => {
+      const initialState = bingoGameDefinition.init({
+        players: [hostId, guestId],
+        setupConfigs,
+      })
+
+      const hostPass: BingoMove = {
+        type: 'PASS',
+        playerId: hostId,
+        reason: 'voluntary',
+      }
+      expect(bingoGameDefinition.validateMove(initialState, hostPass, hostId).valid).toBe(true)
+      const stateAfterHostPass = bingoGameDefinition.applyMove(initialState, hostPass)
+
+      expect(stateAfterHostPass.history).toEqual([
+        { type: 'pass', playerId: hostId, reason: 'voluntary', sequence: 1 },
+      ])
+      expect(getCalledNumbers(stateAfterHostPass.history)).toEqual([])
+      expect(stateAfterHostPass.activePlayerId).toBe(guestId)
+
+      const guestPass: BingoMove = {
+        type: 'PASS',
+        playerId: guestId,
+        reason: 'timeout',
+      }
+      expect(bingoGameDefinition.validateMove(stateAfterHostPass, guestPass, guestId).valid).toBe(true)
+      const stateAfterGuestPass = bingoGameDefinition.applyMove(stateAfterHostPass, guestPass)
+
+      expect(stateAfterGuestPass.history).toEqual([
+        { type: 'pass', playerId: hostId, reason: 'voluntary', sequence: 1 },
+        { type: 'pass', playerId: guestId, reason: 'timeout', sequence: 2 },
+      ])
+      expect(stateAfterGuestPass.activePlayerId).toBe(hostId)
+      expect(stateAfterGuestPass.completedLines).toEqual(initialState.completedLines)
+    })
+
+    it('rejects Passes from the wrong Player or after completion', () => {
+      const initialState = bingoGameDefinition.init({
+        players: [hostId, guestId],
+        setupConfigs,
+      })
+      const outOfTurnPass: BingoMove = {
+        type: 'PASS',
+        playerId: guestId,
+        reason: 'voluntary',
+      }
+
+      expect(bingoGameDefinition.validateMove(initialState, outOfTurnPass, guestId)).toEqual({
+        valid: false,
+        reason: 'Not your turn',
+      })
+
+      const completedState = { ...initialState, status: 'completed' as const }
+      const passAfterCompletion: BingoMove = {
+        type: 'PASS',
+        playerId: hostId,
+        reason: 'voluntary',
+      }
+      expect(bingoGameDefinition.validateMove(completedState, passAfterCompletion, hostId)).toEqual({
+        valid: false,
+        reason: 'Match is already completed',
+      })
+    })
+
+    it('declares a draw when the same Call gives both Players five lines', () => {
       let state = bingoGameDefinition.init({
         players: [hostId, guestId],
         setupConfigs,
@@ -171,7 +244,7 @@ describe('BINGO Game Engine', () => {
 
       for (const num of numbersToCall) {
         const move: BingoMove = {
-          type: 'PICK_NUMBER',
+          type: 'CALL_NUMBER',
           number: num,
           playerId: state.activePlayerId,
         }
@@ -182,6 +255,9 @@ describe('BINGO Game Engine', () => {
       expect(winResult.isGameOver).toBe(true)
       expect(state.status).toBe('completed')
       expect(state.completedLines[hostId]).toBeGreaterThanOrEqual(5)
+      expect(state.completedLines[guestId]).toBeGreaterThanOrEqual(5)
+      expect(winResult.isDraw).toBe(true)
+      expect(winResult.winnerId).toBeNull()
     })
   })
 })

@@ -40,8 +40,7 @@ export interface MatchStartMessagePayload {
 }
 
 export interface SyncMessagePayload {
-  calledNumbers: number[]
-  activePlayerId: string
+  state: unknown
   timestamp: number
 }
 

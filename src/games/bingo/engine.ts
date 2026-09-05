@@ -1,5 +1,13 @@
 import { GameDefinition, ValidationResult, WinResult } from '@/core/games/types'
-import { BingoBoard, BingoMove, BingoSetupConfig, BingoState, LineDetails } from './types'
+import {
+  BingoBoard,
+  BingoInitConfig,
+  BingoMove,
+  BingoSetupConfig,
+  BingoState,
+  BingoTurnEvent,
+  LineDetails,
+} from './types'
 
 export const BINGO_SIZE = 5
 export const TOTAL_NUMBERS = 25
@@ -35,6 +43,13 @@ export function validateBingoBoard(board: BingoBoard): ValidationResult {
     }
   }
   return { valid: true }
+}
+
+/**
+ * Returns the uncalled numbers available for play.
+ */
+export function getCalledNumbers(history: BingoTurnEvent[]): number[] {
+  return history.flatMap((event) => (event.type === 'call' ? [event.number] : []))
 }
 
 /**
@@ -115,6 +130,77 @@ export function calculateCompletedLines(
   return { count, rows, cols, diags }
 }
 
+export function parseBingoMove(value: unknown): BingoMove | null {
+  if (!value || typeof value !== 'object') return null
+
+  const candidate = value as Record<string, unknown>
+  if (typeof candidate.playerId !== 'string') return null
+
+  if (
+    candidate.type === 'CALL_NUMBER' &&
+    typeof candidate.number === 'number' &&
+    Number.isInteger(candidate.number)
+  ) {
+    return {
+      type: 'CALL_NUMBER',
+      number: candidate.number,
+      playerId: candidate.playerId,
+    }
+  }
+
+  if (
+    candidate.type === 'PASS' &&
+    (candidate.reason === 'voluntary' || candidate.reason === 'timeout')
+  ) {
+    return {
+      type: 'PASS',
+      playerId: candidate.playerId,
+      reason: candidate.reason,
+    }
+  }
+
+  return null
+}
+
+function parseTurnEventMove(value: unknown, expectedSequence: number): BingoMove | null {
+  if (!value || typeof value !== 'object') return null
+
+  const candidate = value as Record<string, unknown>
+  if (candidate.sequence !== expectedSequence) return null
+
+  const move =
+    candidate.type === 'call'
+      ? parseBingoMove({
+          type: 'CALL_NUMBER',
+          number: candidate.number,
+          playerId: candidate.playerId,
+        })
+      : candidate.type === 'pass'
+        ? parseBingoMove({
+            type: 'PASS',
+            playerId: candidate.playerId,
+            reason: candidate.reason,
+          })
+        : null
+  return move
+}
+
+export function replayBingoHistory(config: BingoInitConfig, value: unknown): BingoState | null {
+  if (!Array.isArray(value)) return null
+
+  let state = bingoGameDefinition.init(config)
+  for (let index = 0; index < value.length; index++) {
+    const move = parseTurnEventMove(value[index], index + 1)
+    if (!move) return null
+
+    const validation = bingoGameDefinition.validateMove(state, move, move.playerId)
+    if (!validation.valid) return null
+    state = bingoGameDefinition.applyMove(state, move)
+  }
+
+  return state
+}
+
 export const bingoGameDefinition: GameDefinition<BingoState, BingoMove, BingoSetupConfig> = {
   id: 'bingo',
   name: 'BINGO',
@@ -125,11 +211,7 @@ export const bingoGameDefinition: GameDefinition<BingoState, BingoMove, BingoSet
     return validateBingoBoard(config.board)
   },
 
-  init(config: {
-    players: [string, string]
-    setupConfigs: Record<string, BingoSetupConfig>
-    startingPlayerId?: string
-  }): BingoState {
+  init(config: BingoInitConfig): BingoState {
     const [p1, p2] = config.players
     const startingPlayerId = config.startingPlayerId || p1
 
@@ -149,7 +231,7 @@ export const bingoGameDefinition: GameDefinition<BingoState, BingoMove, BingoSet
         [p1]: config.setupConfigs[p1].board,
         [p2]: config.setupConfigs[p2].board,
       },
-      calledNumbers: [],
+      history: [],
       activePlayerId: startingPlayerId,
       completedLines,
       lineDetails,
@@ -168,20 +250,36 @@ export const bingoGameDefinition: GameDefinition<BingoState, BingoMove, BingoSet
     if (move.playerId !== playerId) {
       return { valid: false, reason: 'Move player mismatch' }
     }
-    if (move.number < 1 || move.number > TOTAL_NUMBERS) {
-      return { valid: false, reason: `Number ${move.number} is out of range` }
-    }
-    if (state.calledNumbers.includes(move.number)) {
-      return { valid: false, reason: `Number ${move.number} has already been called` }
+    if (move.type === 'CALL_NUMBER') {
+      if (!Number.isInteger(move.number) || move.number < 1 || move.number > TOTAL_NUMBERS) {
+        return { valid: false, reason: `Number ${move.number} is out of range` }
+      }
+      if (getCalledNumbers(state.history).includes(move.number)) {
+        return { valid: false, reason: `Number ${move.number} has already been called` }
+      }
     }
     return { valid: true }
   },
 
   applyMove(state: BingoState, move: BingoMove): BingoState {
-    const newCalledNumbers = [...state.calledNumbers, move.number]
-    const calledSet = new Set(newCalledNumbers)
-
+    const sequence = state.history.length + 1
+    const event: BingoTurnEvent =
+      move.type === 'CALL_NUMBER'
+        ? { type: 'call', number: move.number, playerId: move.playerId, sequence }
+        : { type: 'pass', playerId: move.playerId, reason: move.reason, sequence }
+    const nextHistory = [...state.history, event]
     const [p1, p2] = state.players
+    const nextActivePlayerId = state.players.find((playerId) => playerId !== state.activePlayerId) || p1
+
+    if (event.type === 'pass') {
+      return {
+        ...state,
+        history: nextHistory,
+        activePlayerId: nextActivePlayerId,
+      }
+    }
+
+    const calledSet = new Set(getCalledNumbers(nextHistory))
     const p1Details = calculateCompletedLines(state.boards[p1], calledSet)
     const p2Details = calculateCompletedLines(state.boards[p2], calledSet)
 
@@ -194,7 +292,6 @@ export const bingoGameDefinition: GameDefinition<BingoState, BingoMove, BingoSet
       [p2]: p2Details,
     }
 
-    // Check for win condition
     const p1Won = p1Details.count >= TARGET_LINES_TO_WIN
     const p2Won = p2Details.count >= TARGET_LINES_TO_WIN
 
@@ -213,11 +310,9 @@ export const bingoGameDefinition: GameDefinition<BingoState, BingoMove, BingoSet
       winnerId = p2
     }
 
-    const nextActivePlayerId = state.players.find((p) => p !== state.activePlayerId) || p1
-
     return {
       ...state,
-      calledNumbers: newCalledNumbers,
+      history: nextHistory,
       activePlayerId: nextActivePlayerId,
       completedLines: nextCompletedLines,
       lineDetails: nextLineDetails,

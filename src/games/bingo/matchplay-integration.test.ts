@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createLoopbackTransportPair } from '@/core/transport/LoopbackTransport'
 import { LobbyCoordinator } from '@/core/lobby/LobbyCoordinator'
 import { BingoMatchCoordinator } from './state/BingoMatchCoordinator'
 import { MatchStartEvent } from '@/core/lobby/types'
 import { BingoBoard } from './types'
-import { validateBingoBoard } from './engine'
+import { bingoGameDefinition, validateBingoBoard } from './engine'
 
 describe('BINGO Dual-Player Full Matchplay Integration Test', () => {
   it('executes a complete match from lobby setup to deterministic victory', async () => {
@@ -127,9 +127,101 @@ describe('BINGO Dual-Player Full Matchplay Integration Test', () => {
     // Lines formed check
     expect(hostMatch.state.gameState.completedLines[hostTransport.localPlayerId]).toBeGreaterThanOrEqual(5)
     expect(guestMatch.state.gameState.completedLines[hostTransport.localPlayerId]).toBeGreaterThanOrEqual(5)
+    expect(guestMatch.state.gameState.history).toEqual(hostMatch.state.gameState.history)
 
     hostMatch.destroy()
     guestMatch.destroy()
+  })
+
+  it('keeps timeout Passes, Call ownership, and draws consistent through reconnection', async () => {
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      const [hostTransport, guestTransport] = createLoopbackTransportPair()
+      await hostTransport.connect()
+      await guestTransport.connect()
+
+      const board = Array.from({ length: 25 }, (_, index) => index + 1)
+      const matchStartEvent: MatchStartEvent<BingoBoard> = {
+        hostId: hostTransport.localPlayerId,
+        guestId: guestTransport.localPlayerId,
+        startingPlayerId: hostTransport.localPlayerId,
+        hostSetup: board,
+        guestSetup: board,
+      }
+      const hostMatch = new BingoMatchCoordinator({
+        transport: hostTransport,
+        localPlayer: { id: hostTransport.localPlayerId, name: 'Alice', role: 'host' },
+        remotePlayer: { id: guestTransport.localPlayerId, name: 'Bob', role: 'guest' },
+        matchStartEvent,
+        turnDurationSeconds: 2,
+      })
+      const guestMatch = new BingoMatchCoordinator({
+        transport: guestTransport,
+        localPlayer: { id: guestTransport.localPlayerId, name: 'Bob', role: 'guest' },
+        remotePlayer: { id: hostTransport.localPlayerId, name: 'Alice', role: 'host' },
+        matchStartEvent,
+        turnDurationSeconds: 2,
+      })
+
+      vi.advanceTimersByTime(2000)
+      expect(hostMatch.state.gameState.history).toEqual([
+        {
+          type: 'pass',
+          playerId: hostTransport.localPlayerId,
+          reason: 'timeout',
+          sequence: 1,
+        },
+      ])
+      expect(guestMatch.state.gameState.history).toEqual(hostMatch.state.gameState.history)
+
+      expect(guestMatch.passTurn()).toBe(true)
+      expect(hostMatch.submitMove(1)).toBe(true)
+
+      guestTransport.disconnect()
+      guestMatch.state = {
+        ...guestMatch.state,
+        gameState: bingoGameDefinition.init({
+          players: [hostTransport.localPlayerId, guestTransport.localPlayerId],
+          setupConfigs: {
+            [hostTransport.localPlayerId]: { board },
+            [guestTransport.localPlayerId]: { board },
+          },
+          startingPlayerId: hostTransport.localPlayerId,
+        }),
+      }
+      await guestTransport.connect()
+
+      expect(guestMatch.state.gameState.history).toEqual(hostMatch.state.gameState.history)
+      expect(warn).toHaveBeenCalledWith('Ignored incompatible BINGO sync history')
+      expect(guestMatch.state.gameState.history[2]).toEqual({
+        type: 'call',
+        number: 1,
+        playerId: hostTransport.localPlayerId,
+        sequence: 3,
+      })
+
+      for (let number = 2; number <= 25; number++) {
+        if (hostMatch.state.gameState.status === 'completed') break
+        const activeMatch = hostMatch.isMyTurn ? hostMatch : guestMatch
+        expect(activeMatch.submitMove(number)).toBe(true)
+      }
+
+      expect(hostMatch.winResult).toMatchObject({
+        isGameOver: true,
+        winnerId: null,
+        isDraw: true,
+      })
+      expect(guestMatch.winResult).toEqual(hostMatch.winResult)
+      expect(guestMatch.state.gameState.history).toEqual(hostMatch.state.gameState.history)
+
+      hostMatch.destroy()
+      guestMatch.destroy()
+    } finally {
+      warn.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   it('seamlessly negotiates rematch and transitions back to lobby setup for match 2', async () => {
