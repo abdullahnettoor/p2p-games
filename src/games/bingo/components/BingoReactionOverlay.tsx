@@ -59,7 +59,7 @@ export const BingoReactionOverlay: React.FC<BingoReactionOverlayProps> = ({
       {reactions.map((rx) => (
         <div
           key={rx.id}
-          className="absolute bottom-24 -translate-x-1/2 flex flex-col items-center animate-float-up"
+          className="absolute bottom-24 -translate-x-1/2 flex flex-col items-center animate-float-up motion-reduce:animate-none"
           style={{ left: `${rx.xPercent}%` }}
         >
           <div className="text-5xl filter drop-shadow-lg scale-110">

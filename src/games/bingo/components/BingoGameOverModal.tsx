@@ -42,7 +42,7 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
   const isForfeit = winResult.reason === 'forfeit'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300 motion-reduce:animate-none">
       <div
         className={cn(
           'max-w-md w-full rounded-3xl p-6 md:p-8 border text-center space-y-6 shadow-2xl relative overflow-hidden bg-gradient-to-b',
@@ -62,7 +62,7 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
         {/* Big Icon */}
         <div className="mx-auto flex items-center justify-center">
           {isWinner ? (
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-xl shadow-amber-500/20 scale-105 animate-bounce">
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-xl shadow-amber-500/20 scale-105">
               <Trophy className="w-10 h-10" />
             </div>
           ) : isDraw ? (
@@ -187,8 +187,8 @@ export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
           )}
 
           {rematchState === 'requested' && (
-            <div className="w-full py-3 px-4 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-medium text-sm flex items-center justify-center gap-2.5 animate-pulse">
-              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+            <div className="w-full py-3 px-4 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-medium text-sm flex items-center justify-center gap-2.5">
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-400 motion-reduce:animate-none" />
               <span>Rematch requested... Waiting for opponent</span>
             </div>
           )}

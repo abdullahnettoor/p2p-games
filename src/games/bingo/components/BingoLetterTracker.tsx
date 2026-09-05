@@ -1,33 +1,61 @@
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { BINGO_LETTERS } from '../engine'
 import { cn } from '@/lib/utils'
+import { BingoInkRole } from '../bingoInk'
+import styles from './BingoScorecard.module.css'
 
 interface BingoLetterTrackerProps {
   completedLines: number
+  ownerRole?: BingoInkRole
   className?: string
 }
 
+const STAMP_ROTATIONS = ['-2deg', '1deg', '-1deg', '2deg', '-1.5deg'] as const
+
 export const BingoLetterTracker: React.FC<BingoLetterTrackerProps> = ({
   completedLines,
+  ownerRole = 'host',
   className,
 }) => {
+  const previousCompletedLinesRef = useRef(completedLines)
+  const [newStampStart, setNewStampStart] = useState(completedLines)
+
+  useEffect(() => {
+    const previousCompletedLines = previousCompletedLinesRef.current
+    setNewStampStart(
+      completedLines > previousCompletedLines ? previousCompletedLines : completedLines
+    )
+    previousCompletedLinesRef.current = completedLines
+  }, [completedLines])
+
   return (
-    <div className={cn('flex items-center justify-center gap-2 md:gap-3', className)}>
+    <div
+      className={cn(
+        styles.tokenScope,
+        styles.letterTracker,
+        styles.playerInk,
+        className
+      )}
+      data-ink={ownerRole}
+      aria-label={`${Math.min(completedLines, 5)} of 5 Bingo lines complete`}
+    >
       {BINGO_LETTERS.map((letter, index) => {
         const isActive = index < completedLines
+        const isNew = isActive && index >= newStampStart
         return (
-          <div
+          <span
             key={letter}
             data-active={isActive ? 'true' : 'false'}
-            className={cn(
-              'w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center font-black text-lg md:text-xl transition-all duration-300 shadow-sm border',
-              isActive
-                ? 'bg-amber-500 border-amber-400 text-slate-950 scale-110 shadow-amber-500/30 shadow-lg animate-pulse'
-                : 'bg-slate-800/80 border-slate-700 text-slate-400'
-            )}
+            data-new-stamp={isNew ? 'true' : 'false'}
+            data-ink={ownerRole}
+            className={styles.letterStamp}
+            style={{
+              '--stamp-rotation': STAMP_ROTATIONS[index],
+              animationDelay: isNew ? `${(index - newStampStart) * 110}ms` : undefined,
+            } as React.CSSProperties}
           >
             {letter}
-          </div>
+          </span>
         )
       })}
     </div>

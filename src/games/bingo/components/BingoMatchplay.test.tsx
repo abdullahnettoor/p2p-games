@@ -56,7 +56,7 @@ describe('BingoMatchplay', () => {
 
     render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
 
-    expect(screen.getAllByText(/Your Turn/i).length).toBeGreaterThan(0)
+    expect(screen.getByText('Your turn')).toBeInTheDocument()
     expect(screen.getByText(/30s/i)).toBeInTheDocument()
     expect(screen.getByText(/Alice/i)).toBeInTheDocument()
     expect(screen.getByText(/Bob/i)).toBeInTheDocument()
@@ -78,6 +78,27 @@ describe('BingoMatchplay', () => {
 
     // Turn should now be opponent's
     expect(screen.getByText(/Bob's Turn/i)).toBeInTheDocument()
+  })
+
+  it('shows the latest Call slip and caller ink on both clients', () => {
+    const { hostCoordinator, guestCoordinator } = createTestCoordinators()
+
+    const { container: hostView } = render(
+      <BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />
+    )
+    const { container: guestView } = render(
+      <BingoMatchplay coordinator={guestCoordinator} onExit={vi.fn()} />
+    )
+
+    act(() => {
+      fireEvent.click(screen.getAllByRole('button', { name: '7' })[0])
+    })
+
+    expect(screen.getAllByLabelText('Latest Call')).toHaveLength(2)
+    expect(screen.getAllByText('Alice called')).toHaveLength(2)
+    expect(screen.getAllByText('×')).toHaveLength(2)
+    expect(hostView.querySelector('[data-call-number="7"][data-ink="host"]')).toBeInTheDocument()
+    expect(guestView.querySelector('[data-call-number="7"][data-ink="host"]')).toBeInTheDocument()
   })
 
   it('lets the active Player pass the turn', () => {
@@ -155,6 +176,6 @@ describe('BingoMatchplay', () => {
     })
 
     expect(screen.getAllByText('👋').length).toBe(2)
-    expect(screen.getByText('Bob')).toBeInTheDocument()
+    expect(screen.getAllByText('Bob').length).toBeGreaterThanOrEqual(2)
   })
 })

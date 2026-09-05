@@ -8,12 +8,14 @@ export interface BingoSoundToggleProps {
   isMuted: boolean
   onToggle: () => void
   className?: string
+  showLabel?: boolean
 }
 
 export const BingoSoundToggle: React.FC<BingoSoundToggleProps> = ({
   isMuted,
   onToggle,
   className,
+  showLabel = false,
 }) => {
   return (
     <button
@@ -30,6 +32,9 @@ export const BingoSoundToggle: React.FC<BingoSoundToggleProps> = ({
       )}
     >
       {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+      <span className={showLabel ? 'hidden sm:inline text-xs font-semibold' : 'sr-only'}>
+        {isMuted ? 'Sound off' : 'Sound on'}
+      </span>
     </button>
   )
 }

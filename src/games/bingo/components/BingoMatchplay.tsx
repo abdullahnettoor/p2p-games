@@ -1,9 +1,12 @@
 'use client'
 
 import React from 'react'
-import { BingoMatchCoordinator } from '../state/BingoMatchCoordinator'
+import { ArrowLeft } from 'lucide-react'
+import { BingoMatchCoordinator, PlayerSummary } from '../state/BingoMatchCoordinator'
 import { useBingoMatch } from '../state/useBingoMatch'
 import { useBingoAudio } from '../hooks/useBingoAudio'
+import { getCalls } from '../engine'
+import { BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
 import { BingoBoardView } from './BingoBoardView'
 import { BingoLetterTracker } from './BingoLetterTracker'
 import { BingoTurnTimer } from './BingoTurnTimer'
@@ -12,15 +15,47 @@ import { BingoReactionBar } from './BingoReactionBar'
 import { BingoReactionOverlay } from './BingoReactionOverlay'
 import { BingoGameOverModal } from './BingoGameOverModal'
 import { BingoReconnectionBanner } from './BingoReconnectionBanner'
-import { ArrowLeft, User, Sparkles, Hash } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getCalledNumbers } from '../engine'
+import styles from './BingoScorecard.module.css'
+
+interface PlayerLedgerEntryProps {
+  player: PlayerSummary
+  relationship: string
+  completedLines: number
+}
+
+const PlayerLedgerEntry: React.FC<PlayerLedgerEntryProps> = ({
+  player,
+  relationship,
+  completedLines,
+}) => {
+  const ink = getBingoInkPresentation(player.role)
+
+  return (
+    <div className={cn(styles.playerEntry, styles.playerInk)} data-ink={player.role}>
+      <div className={styles.playerIdentity}>
+        <span
+          role="img"
+          data-mark-shape={ink.markShape}
+          className={styles.inkDot}
+          aria-label={`${ink.label}, ${ink.markShape} mark`}
+        />
+        <span className={styles.playerName}>{player.name}</span>
+      </div>
+      <div className={styles.playerMeta}>
+        <span>{relationship}</span>
+        <span>{completedLines}/5 lines</span>
+      </div>
+    </div>
+  )
+}
 
 export interface BingoMatchplayProps {
   coordinator: BingoMatchCoordinator
   onExit: () => void
   className?: string
 }
+
 
 export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
   coordinator,
@@ -36,227 +71,182 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
   const myLines = state.gameState.completedLines[localPlayer.id] || 0
   const myLineDetails = state.gameState.lineDetails[localPlayer.id]
   const remoteLines = state.gameState.completedLines[remotePlayer.id] || 0
-  const calledNumbers = getCalledNumbers(state.gameState.history)
+  const calls = getCalls(state.gameState.history)
+  const latestCall = calls.length > 0 ? calls[calls.length - 1] : null
   const isGameOver = state.winResult.isGameOver
-
+  const playersById: Record<string, BingoPlayerInk> = {
+    [localPlayer.id]: { name: localPlayer.name, role: localPlayer.role },
+    [remotePlayer.id]: { name: remotePlayer.name, role: remotePlayer.role },
+  }
   const activePlayerName = isMyTurn ? localPlayer.name : remotePlayer.name
-  const lastCalledNumber = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null
+  const latestCaller = latestCall
+    ? latestCall.playerId === localPlayer.id
+      ? localPlayer
+      : remotePlayer
+    : null
 
   return (
-    <div className={cn('space-y-6 max-w-4xl mx-auto w-full py-2 relative', className)}>
-      {/* Ephemeral Reaction Overlay */}
+    <div className={cn(styles.tokenScope, styles.matchSurface, className)}>
       <BingoReactionOverlay coordinator={coordinator} />
 
-      {/* Top Header Bar */}
-      <div className="flex items-center justify-between gap-4">
-        <button
-          type="button"
-          onClick={onExit}
-          className="inline-flex items-center gap-2 text-xs md:text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
+      <div className={styles.utilityBar}>
+        <button type="button" onClick={onExit} className={styles.utilityButton}>
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>Exit Match</span>
         </button>
-
-        <div className="flex items-center gap-2.5">
-          <BingoSoundToggle isMuted={isMuted} onToggle={toggleMute} />
-          <BingoTurnTimer
-            secondsRemaining={state.turnSecondsRemaining}
-            isMyTurn={isMyTurn}
-          />
-        </div>
+        <BingoSoundToggle
+          isMuted={isMuted}
+          onToggle={toggleMute}
+          showLabel
+          className={styles.paperIconButton}
+        />
       </div>
 
-      {/* 30s Reconnection Grace Period Banner */}
       <BingoReconnectionBanner
         isReconnecting={state.isReconnecting}
         secondsRemaining={state.reconnectSecondsRemaining}
         remotePlayerName={remotePlayer.name}
+        className={styles.reconnection}
       />
 
-      {/* Turn Indicator & Score Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-        {/* Local Player Progress */}
-        <div
-          className={cn(
-            'p-3.5 rounded-2xl border transition-all duration-300 flex items-center justify-between',
-            isMyTurn
-              ? 'bg-gradient-to-r from-emerald-950/40 to-slate-900 border-emerald-500/50 shadow-emerald-900/20 shadow-md ring-1 ring-emerald-500/30'
-              : 'bg-slate-900/80 border-slate-800'
-          )}
-        >
-          <div className="flex items-center gap-2.5">
-            <div
-              className={cn(
-                'w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border',
-                isMyTurn
-                  ? 'bg-emerald-600 text-white border-emerald-400'
-                  : 'bg-indigo-950/60 text-indigo-300 border-indigo-800/80'
-              )}
-            >
-              <User className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">
-                {localPlayer.name} (You)
-              </span>
-              <span className="text-xs text-slate-300 font-medium">
-                {myLines} / 5 Lines Formed
-              </span>
-            </div>
+      <main className={styles.scoreSheet} aria-label="Bingo scorecard">
+        <header className={styles.sheetHeader}>
+          <h1 className={styles.masthead}>BINGO</h1>
+          <span className={styles.issueLabel}>Two-player match scorecard</span>
+        </header>
+
+        <div className={styles.playerLedger} aria-label="Players and line scores">
+          <PlayerLedgerEntry
+            player={localPlayer}
+            relationship="Your ink"
+            completedLines={myLines}
+          />
+          <PlayerLedgerEntry
+            player={remotePlayer}
+            relationship="Opponent"
+            completedLines={remoteLines}
+          />
+        </div>
+
+        <section className={styles.turnStrip} aria-label="Current turn">
+          <div className={styles.turnCopy}>
+            <span className={styles.turnLabel}>
+              {isMyTurn ? 'Your turn' : `${activePlayerName}'s turn`}
+            </span>
+            <span className={styles.turnInstruction}>
+              {isMyTurn ? 'Tap one unmarked number to call it.' : 'Their Call will appear on your scorecard.'}
+            </span>
           </div>
 
-          {isMyTurn && (
-            <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 animate-pulse">
-              Your Turn
-            </span>
-          )}
-        </div>
-
-        {/* Remote Opponent Progress */}
-        <div
-          className={cn(
-            'p-3.5 rounded-2xl border transition-all duration-300 flex items-center justify-between',
-            !isMyTurn
-              ? 'bg-gradient-to-r from-indigo-950/40 to-slate-900 border-indigo-500/50 shadow-indigo-900/20 shadow-md ring-1 ring-indigo-500/30'
-              : 'bg-slate-900/80 border-slate-800'
-          )}
-        >
-          <div className="flex items-center gap-2.5">
-            <div
-              className={cn(
-                'w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border',
-                !isMyTurn
-                  ? 'bg-indigo-600 text-white border-indigo-400'
-                  : 'bg-slate-800 text-slate-400 border-slate-700'
-              )}
-            >
-              <User className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                {remotePlayer.name} (Opponent)
-              </span>
-              <span className="text-xs text-slate-300 font-medium">
-                {remoteLines} / 5 Lines Formed
-              </span>
-            </div>
+          <div className={styles.turnActions}>
+            {isMyTurn ? (
+              <div className={styles.passGroup}>
+                <button
+                  type="button"
+                  onClick={passTurn}
+                  disabled={isGameOver || state.isReconnecting}
+                  className={styles.passButton}
+                >
+                  Pass turn
+                </button>
+                <span className={styles.passHint}>Ends your turn</span>
+              </div>
+            ) : null}
+            <BingoTurnTimer
+              secondsRemaining={state.turnSecondsRemaining}
+              isMyTurn={isMyTurn}
+            />
           </div>
+        </section>
 
-          {!isMyTurn && (
-            <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800">
-              {remotePlayer.name}&apos;s Turn
-            </span>
-          )}
+        <div className={styles.callSlipSlot}>
+          {latestCall && latestCaller ? (
+            <aside
+              key={latestCall.sequence}
+              role="status"
+              aria-label="Latest Call"
+              className={cn(styles.callSlip, styles.playerInk)}
+              data-ink={latestCaller.role}
+            >
+              <span className={styles.callSlipLabel}>{latestCaller.name} called</span>
+              <strong className={styles.callSlipNumber}>{latestCall.number}</strong>
+            </aside>
+          ) : null}
         </div>
-      </div>
 
-      {/* Active Turn Banner */}
-      <div
-        className={cn(
-          'p-4 rounded-2xl border text-center transition-all duration-300 flex items-center justify-center gap-2',
-          isMyTurn
-            ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-300 shadow-md'
-            : 'bg-slate-900/40 border-slate-800 text-slate-400'
-        )}
-      >
-        <Sparkles className={cn('w-4 h-4', isMyTurn ? 'text-amber-400 animate-spin' : 'text-slate-500')} />
-        <span className="text-sm font-bold">
-          {isMyTurn
-            ? 'Your Turn! Click any uncalled number on your board to call it.'
-            : `Waiting for ${remotePlayer.name} to pick a number...`}
-        </span>
-        {isMyTurn ? (
-          <button
-            type="button"
-            onClick={passTurn}
-            disabled={isGameOver || state.isReconnecting}
-            className="ml-2 rounded-lg border border-emerald-700 px-3 py-2 text-xs font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Pass turn
-          </button>
-        ) : null}
-      </div>
-
-      {/* B-I-N-G-O Letters Tracker */}
-      <div className="space-y-2 text-center py-1">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-          Your B-I-N-G-O Progress
+        <div className={styles.progressRow}>
+          <span className={styles.progressLabel}>Your line stamps</span>
+          <BingoLetterTracker
+            completedLines={myLines}
+            ownerRole={localPlayer.role}
+          />
         </div>
-        <BingoLetterTracker completedLines={myLines} />
-      </div>
 
-      {/* Main 5x5 Board View */}
-      <div className="max-w-md mx-auto w-full">
         <BingoBoardView
           board={myBoard}
-          calledNumbers={calledNumbers}
+          calls={calls}
+          playersById={playersById}
+          boardOwnerRole={localPlayer.role}
           lineDetails={myLineDetails}
+          ariaLabel={`${localPlayer.name}'s Bingo board`}
           isMyTurn={isMyTurn}
-          onPickNumber={(num) => submitMove(num)}
+          onPickNumber={submitMove}
           disabled={!isMyTurn || isGameOver || state.isReconnecting}
         />
-      </div>
 
-      {/* Floating Emoji Reaction Bar */}
-      <div className="flex justify-center">
+        <section className={styles.history} aria-label="Recent Calls">
+          <div className={styles.historyHeader}>
+            <span>Recent Calls</span>
+            <span>{calls.length}/25 called</span>
+          </div>
+          <div className={styles.historyList}>
+            {calls.length === 0 ? (
+              <span className={styles.turnInstruction}>No Calls yet.</span>
+            ) : (
+              calls.slice(-10).map((call, index, recentCalls) => {
+                const caller = playersById[call.playerId]
+                const ink = getBingoInkPresentation(caller.role)
+                return (
+                  <span
+                    key={call.sequence}
+                    data-ink={caller.role}
+                    data-latest={index === recentCalls.length - 1 ? 'true' : 'false'}
+                    className={cn(styles.historyItem, styles.playerInk)}
+                    aria-label={`${call.number}, called by ${caller.name}`}
+                  >
+                    <span className={styles.historyMark} aria-hidden="true">{ink.markGlyph}</span>
+                    {call.number}
+                  </span>
+                )
+              })
+            )}
+          </div>
+        </section>
+      </main>
+
+      <div className={styles.reactionDock}>
         <BingoReactionBar
           onSendReaction={(emoji) => coordinator.sendReaction(emoji)}
           disabled={isGameOver || state.isReconnecting}
+          className={styles.paperReactionBar}
         />
       </div>
 
-      {/* Last Called & History Chips */}
-      {calledNumbers.length > 0 && (
-        <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800 max-w-md mx-auto w-full space-y-2 text-center">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span className="flex items-center gap-1 font-semibold">
-              <Hash className="w-3.5 h-3.5 text-slate-500" />
-              Recent Numbers
-            </span>
-            <span>
-              Last Call:{' '}
-              <strong className="text-amber-400 font-bold text-sm">#{lastCalledNumber}</strong>
-            </span>
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-1.5 pt-1">
-            {calledNumbers
-              .slice(-10)
-              .reverse()
-              .map((num, idx) => (
-                <span
-                  key={num}
-                  className={cn(
-                    'px-2 py-0.5 rounded-lg text-xs font-bold border transition-all',
-                    idx === 0
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
-                      : 'bg-slate-800/60 text-slate-400 border-slate-700/60'
-                  )}
-                >
-                  #{num}
-                </span>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Game Over Modal */}
-      {isGameOver && (
+      {isGameOver ? (
         <BingoGameOverModal
           winResult={state.winResult}
           localPlayer={localPlayer}
           remotePlayer={remotePlayer}
           localCompletedLines={myLines}
           remoteCompletedLines={remoteLines}
-          totalCalledCount={calledNumbers.length}
+          totalCalledCount={calls.length}
           rematchState={state.rematchState}
           onRequestRematch={() => coordinator.requestRematch()}
           onAcceptRematch={() => coordinator.acceptRematch()}
           onDeclineRematch={() => coordinator.declineRematch()}
           onExit={onExit}
         />
-      )}
+      ) : null}
     </div>
   )
 }

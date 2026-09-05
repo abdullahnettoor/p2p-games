@@ -1,12 +1,16 @@
-import React, { useMemo } from 'react'
-import { BingoBoard, LineDetails } from '../types'
-import { BINGO_SIZE } from '../engine'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { BingoBoard, BingoCall, LineDetails } from '../types'
+import { BingoInkRole, BingoPlayerInk, getBingoInkPresentation } from '../bingoInk'
 import { cn } from '@/lib/utils'
+import styles from './BingoScorecard.module.css'
 
 interface BingoBoardViewProps {
   board: BingoBoard
-  calledNumbers?: number[]
+  calls: BingoCall[]
+  playersById: Record<string, BingoPlayerInk>
+  boardOwnerRole?: BingoInkRole
   lineDetails?: LineDetails
+  ariaLabel?: string
   isMyTurn?: boolean
   onPickNumber?: (num: number) => void
   disabled?: boolean
@@ -15,93 +19,158 @@ interface BingoBoardViewProps {
 
 const DEFAULT_LINE_DETAILS: LineDetails = { count: 0, rows: [], cols: [], diags: [] }
 
+const HOST_SCRIBBLE_PATHS = [
+  ['M18 19 C35 36 59 61 83 81', 'M79 17 C62 39 40 58 19 84'],
+  ['M16 24 C39 40 54 63 85 77', 'M82 20 C61 38 43 69 17 80'],
+  ['M21 17 C35 42 62 57 80 84', 'M84 24 C59 37 41 65 16 77'],
+] as const
+
+const GUEST_SCRIBBLE_PATHS = [
+  ['M51 13 C80 13 91 35 84 62 C77 88 42 93 20 75 C-1 57 15 21 43 15 C70 8 91 28 85 55', 'M25 69 C43 58 60 42 77 25'],
+  ['M46 14 C75 8 91 29 87 56 C82 84 51 94 26 82 C0 69 8 34 30 20 C50 7 80 15 87 41', 'M23 31 C39 47 58 61 79 74'],
+  ['M53 12 C79 15 91 40 81 66 C70 91 37 91 18 70 C1 50 18 20 43 14 C67 8 90 29 84 55', 'M22 72 C44 59 59 42 78 27'],
+] as const
+
+function completedLinePaths(lineDetails: LineDetails): Array<{ id: string; path: string }> {
+  const paths: Array<{ id: string; path: string }> = []
+
+  lineDetails.rows.forEach((row, index) => {
+    const y = row * 100 + 50
+    paths.push({
+      id: `row-${row}`,
+      path: `M 8 ${y - 2 + index} C 145 ${y + 3} 354 ${y - 4} 492 ${y + 2 - index}`,
+    })
+  })
+
+  lineDetails.cols.forEach((col, index) => {
+    const x = col * 100 + 50
+    paths.push({
+      id: `col-${col}`,
+      path: `M ${x + 2 - index} 8 C ${x - 3} 146 ${x + 4} 354 ${x - 2 + index} 492`,
+    })
+  })
+
+  if (lineDetails.diags.includes(0)) {
+    paths.push({ id: 'diag-0', path: 'M 11 8 C 151 143 347 357 489 492' })
+  }
+  if (lineDetails.diags.includes(1)) {
+    paths.push({ id: 'diag-1', path: 'M 489 9 C 351 151 148 346 10 491' })
+  }
+
+  return paths
+}
+
 export const BingoBoardView: React.FC<BingoBoardViewProps> = ({
   board,
-  calledNumbers = [],
+  calls,
+  playersById,
+  boardOwnerRole = 'host',
   lineDetails = DEFAULT_LINE_DETAILS,
+  ariaLabel = 'Bingo board',
   isMyTurn = false,
   onPickNumber = () => {},
   disabled = false,
   className,
 }) => {
-  const calledSet = useMemo(() => new Set(calledNumbers), [calledNumbers])
+  const callByNumber = useMemo(
+    () => new Map(calls.map((call) => [call.number, call])),
+    [calls]
+  )
+  const calledSet = useMemo(() => new Set(calls.map((call) => call.number)), [calls])
+  const linePaths = useMemo(() => completedLinePaths(lineDetails), [lineDetails])
+  const latestSequence = calls.length > 0 ? calls[calls.length - 1].sequence : null
+  const lineKey = linePaths.map((line) => line.id).join('|')
+  const previousLatestSequenceRef = useRef(latestSequence)
+  const previousLineIdsRef = useRef(new Set(linePaths.map((line) => line.id)))
+  const [animatedSequence, setAnimatedSequence] = useState<number | null>(null)
+  const [animatedLineIds, setAnimatedLineIds] = useState<Set<string>>(() => new Set())
 
-  // Compute set of cell indices that belong to completed lines
-  const completedCellIndices = useMemo(() => {
-    const indices = new Set<number>()
-
-    // Rows
-    for (const r of lineDetails.rows) {
-      for (let c = 0; c < BINGO_SIZE; c++) {
-        indices.add(r * BINGO_SIZE + c)
-      }
+  useEffect(() => {
+    if (latestSequence !== null && latestSequence !== previousLatestSequenceRef.current) {
+      setAnimatedSequence(latestSequence)
     }
+    previousLatestSequenceRef.current = latestSequence
+  }, [latestSequence])
 
-    // Columns
-    for (const c of lineDetails.cols) {
-      for (let r = 0; r < BINGO_SIZE; r++) {
-        indices.add(r * BINGO_SIZE + c)
-      }
-    }
-
-    // Main diagonal
-    if (lineDetails.diags.includes(0)) {
-      for (let i = 0; i < BINGO_SIZE; i++) {
-        indices.add(i * BINGO_SIZE + i)
-      }
-    }
-
-    // Anti diagonal
-    if (lineDetails.diags.includes(1)) {
-      for (let i = 0; i < BINGO_SIZE; i++) {
-        indices.add(i * BINGO_SIZE + (BINGO_SIZE - 1 - i))
-      }
-    }
-
-    return indices
-  }, [lineDetails])
-
-  const latestCalledNumber = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null
+  useEffect(() => {
+    const nextLineIds = new Set(linePaths.map((line) => line.id))
+    setAnimatedLineIds(
+      new Set(linePaths.map((line) => line.id).filter((id) => !previousLineIdsRef.current.has(id)))
+    )
+    previousLineIdsRef.current = nextLineIds
+  }, [lineKey])
 
   return (
-    <div className={cn('grid grid-cols-5 gap-2 md:gap-3 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 shadow-2xl max-w-md w-full mx-auto', className)}>
-      {board.map((num, idx) => {
+    <div
+      className={cn(styles.tokenScope, styles.boardFrame, className)}
+      aria-label={ariaLabel}
+      data-testid="bingo-board"
+    >
+      {board.map((num) => {
+        const call = callByNumber.get(num)
+        const caller = call ? playersById[call.playerId] : undefined
         const isCalled = calledSet.has(num)
-        const isCompletedLine = completedCellIndices.has(idx)
-        const isLatest = num === latestCalledNumber
         const canClick = isMyTurn && !isCalled && !disabled
+        const callerInk = caller?.role ?? 'neutral'
+        const markShape = caller ? getBingoInkPresentation(caller.role).markShape : 'cross'
+        const scribblePaths = markShape === 'loop'
+          ? GUEST_SCRIBBLE_PATHS[num % GUEST_SCRIBBLE_PATHS.length]
+          : HOST_SCRIBBLE_PATHS[num % HOST_SCRIBBLE_PATHS.length]
 
         return (
           <button
-            key={idx}
+            key={num}
             type="button"
+            aria-label={isCalled ? `${num}, called by ${caller?.name ?? 'unknown Player'}` : String(num)}
+            aria-pressed={isCalled}
             disabled={!canClick}
+            data-enabled={canClick ? 'true' : 'false'}
             onClick={() => {
-              if (canClick) {
-                onPickNumber(num)
-              }
+              if (canClick) onPickNumber(num)
             }}
-            className={cn(
-              'aspect-square flex flex-col items-center justify-center rounded-xl font-bold text-lg md:text-2xl transition-all duration-200 select-none relative',
-              isCalled
-                ? isCompletedLine
-                  ? 'bg-amber-500/20 text-amber-300 border-2 border-amber-400 font-extrabold shadow-inner'
-                  : 'bg-indigo-950/70 text-indigo-300 border border-indigo-700/50 line-through opacity-90'
-                : 'bg-slate-800/90 hover:bg-slate-700/90 text-slate-100 border border-slate-700',
-              canClick && 'hover:scale-105 hover:border-indigo-400 hover:shadow-indigo-500/25 hover:shadow-lg cursor-pointer active:scale-95',
-              !canClick && !isCalled && 'cursor-default opacity-80',
-              isLatest && 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-900 animate-pulse'
-            )}
+            className={styles.boardCell}
           >
-            <span>{num}</span>
-            {isCalled && (
-              <span className="text-[10px] uppercase font-semibold tracking-wider text-indigo-400/80">
-                {isCompletedLine ? '⭐' : '✓'}
-              </span>
-            )}
+            <span className={styles.cellNumber}>{num}</span>
+            {call ? (
+              <svg
+                viewBox="0 0 100 100"
+                aria-hidden="true"
+                className={styles.callScribble}
+                data-call-number={num}
+                data-ink={callerInk}
+                data-mark-shape={markShape}
+                data-animated={call.sequence === animatedSequence ? 'true' : 'false'}
+              >
+                <path pathLength="1" d={scribblePaths[0]} />
+                <path pathLength="1" d={scribblePaths[1]} />
+              </svg>
+            ) : null}
           </button>
         )
       })}
+
+      {linePaths.length > 0 ? (
+        <svg
+          viewBox="0 0 500 500"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+          className={cn(styles.lineOverlay, styles.playerInk)}
+          data-ink={boardOwnerRole}
+        >
+          {linePaths.map((line, index) => (
+            <path
+              key={line.id}
+              pathLength="1"
+              d={line.path}
+              className={styles.lineStroke}
+              data-completed-line={line.id}
+              data-ink={boardOwnerRole}
+              data-animated={animatedLineIds.has(line.id) ? 'true' : 'false'}
+              style={{ animationDelay: `${index * 70}ms` }}
+            />
+          ))}
+        </svg>
+      ) : null}
     </div>
   )
 }

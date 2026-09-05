@@ -1,6 +1,7 @@
 import { GameDefinition, ValidationResult, WinResult } from '@/core/games/types'
 import {
   BingoBoard,
+  BingoCall,
   BingoInitConfig,
   BingoMove,
   BingoSetupConfig,
@@ -48,8 +49,12 @@ export function validateBingoBoard(board: BingoBoard): ValidationResult {
 /**
  * Returns the uncalled numbers available for play.
  */
+export function getCalls(history: BingoTurnEvent[]): BingoCall[] {
+  return history.filter((event): event is BingoCall => event.type === 'call')
+}
+
 export function getCalledNumbers(history: BingoTurnEvent[]): number[] {
-  return history.flatMap((event) => (event.type === 'call' ? [event.number] : []))
+  return getCalls(history).map((call) => call.number)
 }
 
 /**

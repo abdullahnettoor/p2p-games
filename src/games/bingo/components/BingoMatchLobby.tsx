@@ -303,7 +303,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
 
             {state.localPlayer.setupConfig ? (
               <div className="max-w-xs mx-auto pt-2">
-                <BingoBoardView board={state.localPlayer.setupConfig} calledNumbers={[]} disabled />
+                <BingoBoardView board={state.localPlayer.setupConfig} calls={[]} playersById={{}} disabled />
               </div>
             ) : null}
 
