@@ -1,0 +1,170 @@
+'use client'
+
+import React from 'react'
+import { WinResult } from '@/core/games/types'
+import { PlayerSummary } from '../state/BingoMatchCoordinator'
+import { Trophy, Award, Frown, ArrowLeft, Hash } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+export interface BingoGameOverModalProps {
+  winResult: WinResult
+  localPlayer: PlayerSummary
+  remotePlayer: PlayerSummary
+  localCompletedLines: number
+  remoteCompletedLines: number
+  totalCalledCount: number
+  onExit: () => void
+  className?: string
+}
+
+export const BingoGameOverModal: React.FC<BingoGameOverModalProps> = ({
+  winResult,
+  localPlayer,
+  remotePlayer,
+  localCompletedLines,
+  remoteCompletedLines,
+  totalCalledCount,
+  onExit,
+  className,
+}) => {
+  const isWinner = winResult.winnerId === localPlayer.id
+  const isLoser = winResult.winnerId === remotePlayer.id
+  const isDraw = winResult.isDraw
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
+      <div
+        className={cn(
+          'max-w-md w-full rounded-3xl p-6 md:p-8 border text-center space-y-6 shadow-2xl relative overflow-hidden bg-gradient-to-b',
+          isWinner
+            ? 'from-amber-950/50 via-slate-900 to-slate-950 border-amber-500/40 shadow-amber-500/10'
+            : isDraw
+            ? 'from-indigo-950/50 via-slate-900 to-slate-950 border-indigo-500/40'
+            : 'from-slate-900 to-slate-950 border-slate-800',
+          className
+        )}
+      >
+        {/* Glow effect */}
+        {isWinner && (
+          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
+        )}
+
+        {/* Big Icon */}
+        <div className="mx-auto flex items-center justify-center">
+          {isWinner ? (
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-xl shadow-amber-500/20 scale-105 animate-bounce">
+              <Trophy className="w-10 h-10" />
+            </div>
+          ) : isDraw ? (
+            <div className="w-20 h-20 rounded-3xl bg-indigo-600 flex items-center justify-center text-white shadow-xl shadow-indigo-600/30">
+              <Award className="w-10 h-10" />
+            </div>
+          ) : (
+            <div className="w-20 h-20 rounded-3xl bg-slate-800 flex items-center justify-center text-slate-400 border border-slate-700">
+              <Frown className="w-10 h-10" />
+            </div>
+          )}
+        </div>
+
+        {/* Title & Subtitle */}
+        <div className="space-y-1.5">
+          <h2 className="text-3xl font-black tracking-tight text-white">
+            {isWinner ? 'VICTORY (WINNER)' : isDraw ? "IT'S A DRAW!" : 'DEFEAT (LOSER)'}
+          </h2>
+          <p className="text-sm text-slate-400">
+            {isWinner
+              ? 'Congratulations! You scored B-I-N-G-O first!'
+              : isDraw
+              ? 'Both players completed 5 lines on the same turn!'
+              : `${remotePlayer.name} completed 5 lines first.`}
+          </p>
+        </div>
+
+        {/* Match Statistics Card */}
+        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 text-left">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 pb-1 border-b border-slate-800">
+            Final Match Summary
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-center pt-1">
+            <div
+              className={cn(
+                'p-2.5 rounded-xl border flex flex-col justify-between',
+                isWinner
+                  ? 'bg-amber-950/30 border-amber-500/40'
+                  : 'bg-slate-950/60 border-slate-800/80'
+              )}
+            >
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] uppercase tracking-wider text-indigo-400 font-semibold truncate">
+                  {localPlayer.name} (You)
+                </span>
+                {isWinner && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                    WINNER
+                  </span>
+                )}
+                {isLoser && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-medium">
+                    LOSER
+                  </span>
+                )}
+              </div>
+              <div>
+                <span className="text-2xl font-black text-white">{localCompletedLines}</span>
+                <span className="text-[10px] text-slate-400 block">lines completed</span>
+              </div>
+            </div>
+
+            <div
+              className={cn(
+                'p-2.5 rounded-xl border flex flex-col justify-between',
+                isLoser
+                  ? 'bg-amber-950/30 border-amber-500/40'
+                  : 'bg-slate-950/60 border-slate-800/80'
+              )}
+            >
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate">
+                  {remotePlayer.name}
+                </span>
+                {isLoser && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                    WINNER
+                  </span>
+                )}
+                {isWinner && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-medium">
+                    LOSER
+                  </span>
+                )}
+              </div>
+              <div>
+                <span className="text-2xl font-black text-white">{remoteCompletedLines}</span>
+                <span className="text-[10px] text-slate-400 block">lines completed</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/80">
+            <span className="flex items-center gap-1.5">
+              <Hash className="w-3.5 h-3.5 text-slate-500" />
+              Total Numbers Called:
+            </span>
+            <span className="font-bold text-slate-200">{totalCalledCount} / 25</span>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <button
+          type="button"
+          onClick={onExit}
+          className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 border border-slate-700"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Exit to Games Hub</span>
+        </button>
+      </div>
+    </div>
+  )
+}

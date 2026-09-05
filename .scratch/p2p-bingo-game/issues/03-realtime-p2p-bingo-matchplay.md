@@ -4,14 +4,14 @@
 
 **Blocked by:** 02: P2P Transport Layer & Multiplayer Match Lobby
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Deterministic starting player selection on Match launch.
-- [ ] Turn indicator clearly showing which Player's turn it is.
-- [ ] Submitting a Move broadcasts the selected number across the Transport.
-- [ ] Opponent's board automatically marks the called number and recalculates completed lines.
-- [ ] Active 30-second countdown timer for each turn with visual urgency cues.
-- [ ] Automatic turn pass (or random valid selection) when the 30-second timer expires.
-- [ ] Symmetrical win verification on both clients upon completing 5 lines (B-I-N-G-O).
-- [ ] Game-over screen displaying Match result (Winner / Loser).
-- [ ] Dual-client integration test executing a full Match from start to victory.
+- [x] Deterministic starting player selection on Match launch.
+- [x] Turn indicator clearly showing which Player's turn it is.
+- [x] Submitting a Move broadcasts the selected number across the Transport.
+- [x] Opponent's board automatically marks the called number and recalculates completed lines.
+- [x] Active 30-second countdown timer for each turn with visual urgency cues.
+- [x] Automatic turn pass (or random valid selection) when the 30-second timer expires.
+- [x] Symmetrical win verification on both clients upon completing 5 lines (B-I-N-G-O).
+- [x] Game-over screen displaying Match result (Winner / Loser).
+- [x] Dual-client integration test executing a full Match from start to victory.

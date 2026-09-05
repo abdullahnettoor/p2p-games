@@ -38,6 +38,20 @@ export function validateBingoBoard(board: BingoBoard): ValidationResult {
 }
 
 /**
+ * Returns the uncalled numbers available for play.
+ */
+export function getAvailableNumbers(calledNumbers: number[] | Set<number>): number[] {
+  const calledSet = calledNumbers instanceof Set ? calledNumbers : new Set(calledNumbers)
+  const available: number[] = []
+  for (let i = 1; i <= TOTAL_NUMBERS; i++) {
+    if (!calledSet.has(i)) {
+      available.push(i)
+    }
+  }
+  return available
+}
+
+/**
  * Calculates completed rows, columns, and diagonals for a board given called numbers.
  */
 export function calculateCompletedLines(

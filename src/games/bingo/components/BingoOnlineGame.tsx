@@ -1,13 +1,15 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { PeerJSTransport } from '@/core/transport/PeerJSTransport'
-import { LobbySession } from '@/core/lobby/LobbySession'
+import { LobbyCoordinator } from '@/core/lobby/LobbyCoordinator'
 import { MatchStartEvent } from '@/core/lobby/types'
 import { BingoBoard } from '../types'
 import { validateBingoBoard } from '../engine'
 import { BingoMatchLobby } from './BingoMatchLobby'
-import { Loader2, AlertCircle, Sparkles, CheckCircle2 } from 'lucide-react'
+import { BingoMatchplay } from './BingoMatchplay'
+import { BingoMatchCoordinator } from '../state/BingoMatchCoordinator'
+import { Loader2, AlertCircle } from 'lucide-react'
 
 export interface BingoOnlineGameProps {
   role: 'host' | 'guest'
@@ -20,9 +22,29 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
   matchId,
   onExit,
 }) => {
-  const [session, setSession] = useState<LobbySession<BingoBoard> | null>(null)
+  const [lobbyCoordinator, setLobbyCoordinator] = useState<LobbyCoordinator<BingoBoard> | null>(null)
+  const [matchCoordinator, setMatchCoordinator] = useState<BingoMatchCoordinator | null>(null)
   const [initError, setInitError] = useState<string | null>(null)
-  const [matchStartData, setMatchStartData] = useState<MatchStartEvent<BingoBoard> | null>(null)
+  const transportRef = useRef<PeerJSTransport | null>(null)
+  const matchCoordinatorRef = useRef<BingoMatchCoordinator | null>(null)
+  matchCoordinatorRef.current = matchCoordinator
+
+  useEffect(() => {
+    return () => {
+      if (matchCoordinatorRef.current) {
+        matchCoordinatorRef.current.destroy()
+        matchCoordinatorRef.current = null
+      }
+    }
+  }, [])
+
+  const handleExit = () => {
+    if (matchCoordinatorRef.current) {
+      matchCoordinatorRef.current.destroy()
+      matchCoordinatorRef.current = null
+    }
+    onExit()
+  }
 
   useEffect(() => {
     let active = true
@@ -31,13 +53,25 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
       role,
       targetPeerId: matchId,
     })
+    transportRef.current = transport
 
-    const lobby = new LobbySession<BingoBoard>({
+    const lobby = new LobbyCoordinator<BingoBoard>({
       transport,
       validateSetup: (board) => validateBingoBoard(board).valid,
       onMatchStart: (event) => {
-        if (active) {
-          setMatchStartData(event)
+        if (!active) return
+
+        const local = lobby.state.localPlayer
+        const remote = lobby.state.remotePlayer
+        if (remote) {
+          const match = new BingoMatchCoordinator({
+            transport,
+            localPlayer: { id: local.id, name: local.name, role: local.role },
+            remotePlayer: { id: remote.id, name: remote.name, role: remote.role },
+            matchStartEvent: event,
+            turnDurationSeconds: 30,
+          })
+          setMatchCoordinator(match)
         }
       },
       inviteUrlGenerator: (id) => {
@@ -50,7 +84,7 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
       .start()
       .then(() => {
         if (active) {
-          setSession(lobby)
+          setLobbyCoordinator(lobby)
         }
       })
       .catch((err) => {
@@ -62,6 +96,10 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     return () => {
       active = false
       lobby.destroy()
+      if (transportRef.current) {
+        transportRef.current.disconnect()
+        transportRef.current = null
+      }
     }
   }, [role, matchId])
 
@@ -75,7 +113,7 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
         </div>
         <button
           type="button"
-          onClick={onExit}
+          onClick={handleExit}
           className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all"
         >
           Return to Hub
@@ -84,7 +122,11 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     )
   }
 
-  if (!session) {
+  if (matchCoordinator) {
+    return <BingoMatchplay coordinator={matchCoordinator} onExit={handleExit} />
+  }
+
+  if (!lobbyCoordinator) {
     return (
       <div className="max-w-md mx-auto p-12 text-center space-y-4">
         <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mx-auto" />
@@ -93,62 +135,12 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
             {role === 'host' ? 'Generating Match Lobby...' : 'Connecting to Host Match...'}
           </h3>
           <p className="text-xs text-slate-400">
-            Establishing secure WebRTC peer signaling...
+            Establishing secure WebRTC signaling...
           </p>
         </div>
       </div>
     )
   }
 
-  // If match started, show start banner (Issue 03 will plug live gameplay reducer here)
-  if (matchStartData) {
-    const isLocalStarting = matchStartData.startingPlayerId === session.state.localPlayer.id
-    return (
-      <div className="max-w-md mx-auto p-8 rounded-3xl bg-slate-900 border border-slate-800 text-center space-y-6 shadow-2xl">
-        <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500 to-amber-500 flex items-center justify-center mx-auto text-white shadow-lg">
-          <Sparkles className="w-8 h-8" />
-        </div>
-
-        <div className="space-y-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Lobby Synchronized!
-          </span>
-          <h2 className="text-2xl font-black text-white">Match Ready To Begin!</h2>
-          <p className="text-xs text-slate-400">
-            {isLocalStarting
-              ? "🎲 You won the coin toss! You take the first turn."
-              : "🎲 Opponent won the coin toss! They take the first turn."}
-          </p>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-left text-xs space-y-2">
-          <div className="flex justify-between text-slate-400">
-            <span>Host:</span>
-            <span className="font-bold text-white">{session.state.localPlayer.role === 'host' ? session.state.localPlayer.name : session.state.remotePlayer?.name}</span>
-          </div>
-          <div className="flex justify-between text-slate-400">
-            <span>Guest:</span>
-            <span className="font-bold text-white">{session.state.localPlayer.role === 'guest' ? session.state.localPlayer.name : session.state.remotePlayer?.name}</span>
-          </div>
-          <div className="flex justify-between text-slate-400">
-            <span>First Turn:</span>
-            <span className="font-bold text-amber-400">
-              {isLocalStarting ? session.state.localPlayer.name : session.state.remotePlayer?.name}
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={onExit}
-          className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all"
-        >
-          Exit Match
-        </button>
-      </div>
-    )
-  }
-
-  return <BingoMatchLobby session={session} onExit={onExit} />
+  return <BingoMatchLobby session={lobbyCoordinator} onExit={handleExit} />
 }
