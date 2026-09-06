@@ -2,7 +2,7 @@
   display: flex;
   min-height: 100dvh;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   padding: max(0.25rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
   background:
@@ -25,7 +25,7 @@
 }
 
 .masthead { margin: 0; font-size: clamp(1.35rem, 7vw, 2rem); font-weight: 900; letter-spacing: 0.08em; line-height: 1; }
-.utilityButton, .resultSecondaryButton, .resultPrimaryButton {
+.resultSecondaryButton, .resultPrimaryButton {
   display: inline-flex;
   min-width: 2.25rem;
   min-height: 2.25rem;
@@ -44,11 +44,11 @@
   line-height: 1.2;
   text-transform: uppercase;
 }
-.utilityButton svg, .resultSecondaryButton svg, .resultPrimaryButton svg, .resultNotice svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
-.utilityButton:hover, .resultSecondaryButton:hover { border-color: var(--bingo-graphite); background: var(--bingo-rule-soft); }
+.resultSecondaryButton svg, .resultPrimaryButton svg, .resultNotice svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
+.resultSecondaryButton:hover { border-color: var(--bingo-graphite); background: var(--bingo-rule-soft); }
 .resultPrimaryButton { border-color: var(--bingo-graphite); background: var(--bingo-graphite); color: var(--bingo-paper-raised); }
 .resultPrimaryButton:hover { background: color-mix(in srgb, var(--bingo-graphite) 88%, var(--bingo-paper)); }
-.utilityButton:focus-visible, .resultSecondaryButton:focus-visible, .resultPrimaryButton:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
+.resultSecondaryButton:focus-visible, .resultPrimaryButton:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
 
 .resultContent, .comparisonContent { width: min(100%, 64rem); margin: 0 auto; }
 .resultContent { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: clamp(0.5rem, 3vw, 1.5rem) 0 1rem; }
@@ -112,7 +112,7 @@
 
 @media (max-width: 22.5rem) {
   .resultSurface { padding-inline: 0.25rem; }
-  .utilityButton span { display: none; }
+
   .resultScoreGrid { gap: 0.25rem; }
   .resultTotal { align-items: flex-start; flex-direction: column; gap: 0.25rem; }
   .comparisonHeader { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
