@@ -24,8 +24,8 @@
   margin-inline: auto;
 }
 
-.masthead { margin: 0; font-size: clamp(1.35rem, 7vw, 2rem); font-weight: 900; letter-spacing: 0.08em; line-height: 1; }
-.resultSecondaryButton, .resultPrimaryButton {
+.masthead { margin: 0; font-size: clamp(1.75rem, 9vw, 2.625rem); font-weight: 900; letter-spacing: 0.08em; line-height: 0.88; }
+.utilityButton, .resultSecondaryButton, .resultPrimaryButton {
   display: inline-flex;
   min-width: 2.25rem;
   min-height: 2.25rem;
@@ -44,11 +44,11 @@
   line-height: 1.2;
   text-transform: uppercase;
 }
-.resultSecondaryButton svg, .resultPrimaryButton svg, .resultNotice svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
-.resultSecondaryButton:hover { border-color: var(--bingo-graphite); background: var(--bingo-rule-soft); }
+.utilityButton svg, .resultSecondaryButton svg, .resultPrimaryButton svg, .resultNotice svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
+.utilityButton:hover, .resultSecondaryButton:hover { border-color: var(--bingo-graphite); background: var(--bingo-rule-soft); }
 .resultPrimaryButton { border-color: var(--bingo-graphite); background: var(--bingo-graphite); color: var(--bingo-paper-raised); }
 .resultPrimaryButton:hover { background: color-mix(in srgb, var(--bingo-graphite) 88%, var(--bingo-paper)); }
-.resultSecondaryButton:focus-visible, .resultPrimaryButton:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
+.utilityButton:focus-visible, .resultSecondaryButton:focus-visible, .resultPrimaryButton:focus-visible { outline: 3px solid var(--bingo-focus); outline-offset: 2px; }
 
 .resultContent, .comparisonContent { width: min(100%, 64rem); margin: 0 auto; }
 .resultContent { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: clamp(0.5rem, 3vw, 1.5rem) 0 1rem; }
@@ -57,7 +57,7 @@
 .resultBadge { display: grid; width: 4rem; height: 4rem; place-items: center; margin: 0.75rem auto; border: 2px solid var(--bingo-graphite); border-radius: 0.875rem; background: var(--bingo-paper-raised); color: var(--bingo-graphite); transform: rotate(-2deg); }
 .resultBadge svg { width: 1.8rem; height: 1.8rem; }
 .resultBadge[data-result="draw"] { border-color: var(--bingo-rule); color: var(--bingo-graphite-muted); }
-.resultTitle { margin: 0; font-size: clamp(1.5rem, 7vw, 2.25rem); font-weight: 900; letter-spacing: 0.02em; line-height: 1; }
+.resultTitle { margin: 0; font-size: clamp(1.5rem, 5vw, 2.25rem); font-weight: 800; letter-spacing: -0.025em; line-height: 1; }
 .resultDescription { max-width: 34rem; margin: 0.5rem auto 0; color: var(--bingo-graphite-muted); font-size: 0.875rem; line-height: 1.45; }
 .resultSummary { border-bottom: 1px solid var(--bingo-rule); padding-bottom: 1rem; }
 .resultScoreGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }

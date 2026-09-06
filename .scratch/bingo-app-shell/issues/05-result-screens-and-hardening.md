@@ -17,10 +17,10 @@ Convert the Match result from a modal into full Shell screens, give desktop a us
 - [x] A received rematch request stays visible while the Player reviews the result or compares Boards.
 - [x] Focus placement, focus restoration, Escape behavior, and live-announcement semantics from the existing result dialog are preserved through the conversion to screen navigation, not dropped.
 - [x] Desktop caps the Board near 480px and spends freed horizontal space on a side column carrying the recent-Calls trail and expanded notes; the notes sheet is unnecessary there.
-- [x] Result and comparison screens hold the no-scroll contract, falling back to page scrolling only when content genuinely cannot fit.
+- [ ] Result and comparison screens hold the no-scroll contract, falling back to page scrolling only when content genuinely cannot fit.
 - [x] Board semantics, caller identity, completed-line descriptions, and colour-independent Player identity are intact across all screens.
 - [x] Board cells are at least 44x44 CSS pixels and other controls at least 36x36 across every screen in the flow.
-- [x] The flow holds at 200% text zoom, scrolling gracefully beyond it.
+- [ ] The flow holds at 200% text zoom, scrolling gracefully beyond it.
 - [x] `src/games/bingo/DESIGN.md` documents the layout contract: height-driven Board, ~150px non-Board budget, 44px cells and 36px controls, overlay-not-reflow, desktop side column, landscape reflow, and the scrolling fallback. (The file has already been moved out of the repository root.)
 - [x] Typecheck, the full test suite, and the production build pass.
 - [x] No committed end-to-end suite is added.

@@ -69,11 +69,16 @@ function playerResultLabel(
 }
 
 function ResultShellBar({
+  onExit,
   isMuted,
   onToggleMute,
-}: Pick<BingoResultScreenProps, 'isMuted' | 'onToggleMute'>) {
+}: Pick<BingoResultScreenProps, 'onExit' | 'isMuted' | 'onToggleMute'>) {
   return (
     <header className={styles.shellBar}>
+      <button type="button" onClick={onExit} aria-label="Exit to games" className={styles.utilityButton}>
+        <ArrowLeft aria-hidden="true" />
+        <span>Exit</span>
+      </button>
       <h1 className={styles.masthead}>BINGO</h1>
       <BingoSoundToggle isMuted={isMuted} onToggle={onToggleMute} />
     </header>
@@ -219,7 +224,7 @@ export const BingoResultScreen: React.FC<BingoResultScreenProps> = (props) => {
 
   return (
     <div ref={screenRef} className={`bingoTokenScope ${styles.resultSurface} ${className ?? ''}`.trim()}>
-      <ResultShellBar isMuted={isMuted} onToggleMute={onToggleMute} />
+      <ResultShellBar onExit={onExit} isMuted={isMuted} onToggleMute={onToggleMute} />
       <main className={styles.resultContent} aria-labelledby="bingo-result-title" aria-describedby="bingo-result-description">
         <header className={styles.resultHeader}>
           <p className={styles.resultKicker}>Final Match result</p>
@@ -269,10 +274,7 @@ export const BingoResultScreen: React.FC<BingoResultScreenProps> = (props) => {
             </button>
           ) : null}
           {history && playersById ? <BingoMatchNotes history={history} playersById={playersById} /> : null}
-          <button type="button" onClick={onExit} className={styles.resultSecondaryButton}>
-            <ArrowLeft aria-hidden="true" />
-            <span>Exit to games</span>
-          </button>
+
         </section>
       </main>
     </div>
@@ -311,10 +313,10 @@ export const BingoComparisonScreen: React.FC<BingoComparisonScreenProps> = (prop
 
   return (
     <div ref={screenRef} className={`bingoTokenScope ${styles.resultSurface} ${className ?? ''}`.trim()}>
-      <ResultShellBar isMuted={isMuted} onToggleMute={onToggleMute} />
+      <ResultShellBar onExit={onExit} isMuted={isMuted} onToggleMute={onToggleMute} />
       <main className={styles.comparisonContent} aria-labelledby="bingo-comparison-title">
         <div className={styles.comparisonHeader}>
-          <button type="button" onClick={onBack} data-result-focus="true" className={styles.resultSecondaryButton}>
+          <button type="button" onClick={onBack} data-result-focus={rematchState === 'received' ? undefined : 'true'} className={styles.resultSecondaryButton}>
             <ArrowLeft aria-hidden="true" />
             <span>Back to result</span>
           </button>
@@ -374,10 +376,7 @@ export const BingoComparisonScreen: React.FC<BingoComparisonScreenProps> = (prop
                 onDeclineRematch={onDeclineRematch}
               />
             ) : null}
-            <button type="button" onClick={onExit} className={styles.resultSecondaryButton}>
-              <ArrowLeft aria-hidden="true" />
-              <span>Exit to games</span>
-            </button>
+
           </aside>
         </div>
       </main>

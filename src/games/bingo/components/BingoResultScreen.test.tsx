@@ -44,7 +44,7 @@ describe('Bingo result screens', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('navigates to a dedicated comparison screen while preserving a received rematch', () => {
+  it('navigates to a dedicated comparison screen while preserving a received rematch', async () => {
     const onCompareBoards = vi.fn()
     const { rerender } = render(
       <BingoResultScreen
@@ -66,6 +66,7 @@ describe('Bingo result screens', () => {
       />
     )
     expect(screen.getByRole('heading', { name: 'Compare Boards' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept Rematch' })).toHaveFocus())
     expect(screen.getAllByRole('grid')).toHaveLength(2)
     expect(screen.getByText('Bob has requested a rematch!')).toBeInTheDocument()
     expect(screen.getByText('Alice called 1')).toBeInTheDocument()
