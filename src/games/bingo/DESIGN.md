@@ -186,8 +186,8 @@ Use an 8px base rhythm with 4px for fine alignment. Do not duplicate the current
 - The Match, Lobby, result, and comparison surfaces are `100dvh`-first Shell screens. Their containers may page-scroll only when content genuinely cannot fit; they must not clip content to preserve a nominal no-scroll state.
 - The Board is sized by available height in the active Match, remains square, and is capped near 480px on wide screens. The non-Board Match budget is approximately 150px: Shell bar, status strip, and action row share that budget.
 - Board cells are at least 44px by 44px. Other controls target at least 36px by 36px, including controls on result and comparison screens.
-- Call slips and transient announcements overlay the active turn/status region rather than covering interactive Board cells or reserving a Board flow slot. Match notes, rules, and reactions open as sheets or popovers without persistent height.
-- Landscape uses a Board-left/status-right reflow. Desktop uses the freed horizontal space for a side column containing Recent Calls and expanded Match notes while keeping the Board the largest object.
+- Call slips and transient announcements overlay the active turn/status region rather than covering interactive Board cells or reserving a Board flow slot. Match notes and rules open as sheets or popovers without persistent height; quick reactions remain direct controls in the action row.
+- Landscape uses a Board-left/status-right reflow. Recent Calls and expanded Match notes stack below the status strip in the right column, using freed horizontal space while keeping the Board the largest object.
 - Result is a full Shell screen. Compare Boards is a separate full Shell screen with both annotated Boards and the same ordered history, Player identity, and line descriptions. A received rematch request remains visible in both screens.
 - At 200% text zoom, text and controls may cause page scrolling when the content genuinely cannot fit; no content is clipped and browser zoom remains enabled.
 

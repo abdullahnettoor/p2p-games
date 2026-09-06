@@ -245,9 +245,10 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
               />
             </div>
           </div>
+        </div>
 
-          <aside className={styles.supportColumn} aria-label="Match record">
-            <section className={styles.history} aria-label="Recent Calls">
+        <aside className={styles.supportColumn} aria-label="Match record">
+          <section className={styles.history} aria-label="Recent Calls">
             <div className={styles.historyHeader}>
               <span>Recent Calls</span>
               <span>{calls.length}/25 called</span>
@@ -274,10 +275,9 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
                 })
               )}
             </div>
-            </section>
-            <BingoMatchNotes history={state.gameState.history} playersById={playersById} open summaryLabel="Complete Match history" desktopOnly className={styles.desktopNotes} />
-          </aside>
-        </div>
+          </section>
+          <BingoMatchNotes history={state.gameState.history} playersById={playersById} open summaryLabel="Complete Match history" desktopOnly className={styles.desktopNotes} />
+        </aside>
       </main>
 
       <footer className={styles.actionRow} aria-label="Match actions">

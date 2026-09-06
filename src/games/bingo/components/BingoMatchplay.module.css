@@ -96,8 +96,8 @@
 
 .matchBody { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
 .boardColumn { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
-.boardStage { position: relative; display: flex; min-height: 13.75rem; flex: 1 1 auto; align-items: center; justify-content: center; padding: 0.35rem 0; }
-.matchBoard { width: auto; height: 100%; max-width: 100%; max-height: 100%; }
+.boardStage { position: relative; display: flex; min-height: 13.75rem; flex: 1 1 auto; align-items: center; justify-content: center; padding: 0.35rem 0; container-type: size; }
+.matchBoard { flex: 0 0 auto; }
 .supportColumn { display: flex; min-width: 0; flex: 0 0 auto; flex-direction: column; }
 .desktopNotes { display: none; }
 .callSlip { position: absolute; z-index: 6; top: 50%; right: 0.5rem; display: flex; align-items: baseline; gap: 0.45rem; width: 7.75rem; border: 1px solid var(--player-ink); border-radius: 3px; padding: 0.35rem 0.5rem; background: var(--bingo-paper-raised); box-shadow: 0 5px 14px var(--bingo-slip-shadow); color: var(--player-ink); pointer-events: none; transform: translateY(-50%) rotate(1.5deg); animation: bingo-slip-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -134,15 +134,16 @@
 .sheet ul { margin: 0.9rem 0 0; padding-left: 1.2rem; color: var(--bingo-graphite-muted); font-size: 0.88rem; line-height: 1.5; }
 .exitCopy { margin: 1rem 0 0; color: var(--bingo-graphite-muted); font-size: 0.9rem; line-height: 1.45; }
 
-@media (max-height: 40rem) {
+@media (max-height: 40rem) and (orientation: portrait) {
   .history { display: none; }
 }
 
 
 @media (orientation: landscape) and (min-width: 30rem) {
-  .matchContent { display: grid; grid-template-areas: "body status"; grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem); column-gap: 0.75rem; }
+  .matchContent { display: grid; grid-template-areas: "body status" "body support"; grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem); grid-template-rows: auto minmax(0, 1fr); column-gap: 0.75rem; }
   .statusStrip { grid-area: status; display: flex; flex-direction: column; justify-content: center; border-block: 0; border-left: 1px solid var(--bingo-rule); padding: 0.75rem 0 0.75rem 0.75rem; }
   .matchBody { grid-area: body; }
+  .supportColumn { grid-area: support; align-self: start; width: 100%; }
   .playerStatuses { grid-template-columns: 1fr; }
   .playerStatus { border-bottom: 1px solid var(--bingo-rule-soft); padding-inline: 0; }
   .playerStatus + .playerStatus { border-left: 0; }
@@ -152,10 +153,10 @@
 }
 
 @media (min-width: 64rem) and (min-height: 40rem) {
-  .matchContent { display: grid; grid-template-areas: "body status"; grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); column-gap: 1.5rem; }
-  .matchBody { display: grid; grid-template-columns: minmax(0, 30rem) minmax(16rem, 1fr); align-items: center; gap: 1rem; }
+  .matchContent { grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); column-gap: 1.5rem; }
+  .matchBody { display: flex; align-items: stretch; }
   .boardStage { min-height: 0; max-height: 30rem; }
-  .matchBoard { max-width: 30rem; }
+
   .supportColumn { justify-content: center; gap: 1rem; }
   .desktopNotes { display: block; border-top: 1px solid var(--bingo-rule); padding-top: 0.75rem; }
   .desktopNotes :global(.matchNotesList) { max-height: 18rem; overflow-y: auto; }

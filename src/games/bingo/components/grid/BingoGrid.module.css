@@ -1,5 +1,6 @@
 .gridFrame {
   position: relative;
+  box-sizing: border-box;
   width: 100%;
   min-width: 220px;
   min-height: 220px;
@@ -13,12 +14,21 @@
 
 .heightSized {
   width: auto;
-  height: 100%;
-  max-width: 100%;
+  height: min(100%, 30rem);
+  min-width: 220px;
+  min-height: 220px;
   aspect-ratio: 1 / 1;
 }
 
+@supports (width: 1cqi) {
+  .heightSized {
+    width: min(100cqi, 100cqb, 30rem);
+    height: min(100cqi, 100cqb, 30rem);
+  }
+}
+
 .gridSurface {
+  box-sizing: border-box;
   display: grid;
   width: 100%;
   height: 100%;

@@ -4,25 +4,21 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { BingoReactionBar } from './BingoReactionBar'
 
 describe('BingoReactionBar', () => {
-  it('keeps the reaction choices behind one compact Doodle control', () => {
+  it('shows every quick reaction directly in the action row', () => {
     const handleSend = vi.fn()
     render(<BingoReactionBar onSendReaction={handleSend} />)
 
-    expect(screen.getByRole('button', { name: 'Doodle' })).toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Quick reactions' })).toBeInTheDocument()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Doodle' }))
-
-    expect(screen.getByRole('menu', { name: 'Doodle choices' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Send doodle 🔥' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send doodle 🔥' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send doodle 👋' })).toBeInTheDocument()
   })
 
   it('invokes onSendReaction with the clicked emoji', () => {
     const handleSend = vi.fn()
     render(<BingoReactionBar onSendReaction={handleSend} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Doodle' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Send doodle 🔥' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send doodle 🔥' }))
 
     expect(handleSend).toHaveBeenCalledWith('🔥')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
@@ -32,10 +28,11 @@ describe('BingoReactionBar', () => {
     const handleSend = vi.fn()
     render(<BingoReactionBar onSendReaction={handleSend} disabled={true} />)
 
-    const doodleButton = screen.getByRole('button', { name: 'Doodle' })
-    expect(doodleButton).toHaveProperty('disabled', true)
+    const doodleButtons = screen.getAllByRole('button', { name: /Send doodle/ })
+    expect(doodleButtons).toHaveLength(5)
+    expect(doodleButtons.every((button) => (button as HTMLButtonElement).disabled)).toBe(true)
 
-    fireEvent.click(doodleButton)
+    fireEvent.click(doodleButtons[0])
     expect(handleSend).not.toHaveBeenCalled()
   })
 })

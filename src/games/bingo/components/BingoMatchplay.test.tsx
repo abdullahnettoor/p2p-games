@@ -62,6 +62,18 @@ describe('BingoMatchplay', () => {
     expect(screen.getByText(/Bob/i)).toBeInTheDocument()
   })
 
+  it('keeps Recent Calls and Match history as a sibling below the status/Board layout', () => {
+    const { hostCoordinator } = createTestCoordinators()
+    render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
+
+    const main = screen.getByRole('main', { name: 'Bingo scorecard' })
+    const matchBody = main.querySelector('[class*="matchBody"]')
+    const matchRecord = screen.getByRole('complementary', { name: 'Match record' })
+
+    expect(matchBody).not.toContainElement(matchRecord)
+    expect(main).toContainElement(matchRecord)
+  })
+
   it('consolidates players, stamps, turn, and timer into the status strip', () => {
     const { hostCoordinator } = createTestCoordinators()
     render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
@@ -72,7 +84,8 @@ describe('BingoMatchplay', () => {
     expect(within(status).getAllByLabelText(/5 Bingo lines complete/)).toHaveLength(2)
     expect(within(status).getByRole('timer')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Pass turn' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Doodle' })).toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Quick reactions' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send doodle 🔥' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Match notes' })).toBeInTheDocument()
   })
 
@@ -228,15 +241,14 @@ describe('BingoMatchplay', () => {
     expect(screen.getByRole('button', { name: /unmute sound effects/i })).toBeInTheDocument()
   })
 
-  it('renders one Doodle control and dispatches a floating reaction on click', () => {
+  it('renders direct quick reactions and dispatches a floating reaction on click', () => {
     const { hostCoordinator, guestCoordinator } = createTestCoordinators()
     render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
 
-    const doodleBtn = screen.getByRole('button', { name: 'Doodle' })
+    const doodleBtn = screen.getByRole('button', { name: 'Send doodle 🔥' })
     expect(doodleBtn).toBeInTheDocument()
 
     fireEvent.click(doodleBtn)
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Send doodle 🔥' }))
 
     // Both local screen and remote coordinator receive reaction
     expect(screen.getAllByText('🔥').length).toBe(2)
@@ -247,7 +259,7 @@ describe('BingoMatchplay', () => {
       guestCoordinator.sendReaction('👋')
     })
 
-    expect(screen.getAllByText('👋').length).toBe(1)
+    expect(screen.getAllByText('👋').length).toBe(2)
     expect(screen.getAllByText('Bob').length).toBeGreaterThanOrEqual(2)
   })
 
