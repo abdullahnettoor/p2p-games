@@ -200,24 +200,12 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
             <PlayerStatus player={localPlayer} relationship="Your ink" completedLines={myLines} />
             <PlayerStatus player={remotePlayer} relationship="Opponent" completedLines={remoteLines} />
           </div>
-          <div className={styles.turnStatus} aria-label="Current turn">
+          <div className={cn(styles.turnStatus, latestCall && styles.turnStatusWithCall)} aria-label="Current turn">
             <div className={styles.turnCopy}>
               <strong>{isMyTurn ? 'Your turn' : `${activePlayerName}'s turn`}</strong>
               <span>{isMyTurn ? 'Call one unmarked number.' : 'Their Call will appear on your Board.'}</span>
             </div>
             <BingoTurnTimer secondsRemaining={state.turnSecondsRemaining} isMyTurn={isMyTurn} />
-          </div>
-        </section>
-
-        {announcement ? (
-          <p className="bingoSrOnly" role="status" aria-live="polite" aria-atomic="true">
-            {announcement}
-          </p>
-        ) : null}
-
-        <div className={styles.matchBody}>
-          <div className={styles.boardColumn}>
-            <div className={styles.boardStage}>
             {latestCall && latestCaller ? (
               <aside
                 key={latestCall.sequence}
@@ -230,7 +218,18 @@ export const BingoMatchplay: React.FC<BingoMatchplayProps> = ({
                 <strong className={styles.callSlipNumber}>{latestCall.number}</strong>
               </aside>
             ) : null}
+          </div>
+        </section>
 
+        {announcement ? (
+          <p className="bingoSrOnly" role="status" aria-live="polite" aria-atomic="true">
+            {announcement}
+          </p>
+        ) : null}
+
+        <div className={styles.matchBody}>
+          <div className={styles.boardColumn}>
+            <div className={styles.boardStage}>
               <BingoBoardView
                 board={myBoard}
                 calls={calls}

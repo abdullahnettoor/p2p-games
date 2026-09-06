@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import QRCode from 'qrcode'
 import { LobbySession } from '@/core/lobby/LobbySession'
 import { useLobby } from '@/core/lobby/useLobby'
 import { BingoBoard } from '../types'
@@ -14,8 +15,8 @@ import {
   Check,
   CheckCircle2,
   CircleHelp,
-
   Copy,
+  QrCode,
 
   Loader2,
   Pencil,
@@ -43,6 +44,11 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   const [localNameInput, setLocalNameInput] = useState(state.localPlayer.name)
   const [inviteFeedback, setInviteFeedback] = useState<InviteFeedback>('idle')
   const [showRules, setShowRules] = useState(false)
+  const [showQr, setShowQr] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [qrError, setQrError] = useState(false)
+  const qrTriggerRef = useRef<HTMLButtonElement>(null)
+  const qrCloseButtonRef = useRef<HTMLButtonElement>(null)
 
   const isHost = state.localPlayer.role === 'host'
   const isLocalReady = state.localPlayer.isReady
@@ -80,6 +86,40 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
       }
     }
   }
+
+  useEffect(() => {
+    if (!showQr || !state.inviteUrl) return
+
+    let cancelled = false
+    setQrDataUrl(null)
+    setQrError(false)
+    QRCode.toString(state.inviteUrl, { type: 'svg', width: 280, margin: 2 })
+      .then((svg) => {
+        if (!cancelled) setQrDataUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`)
+      })
+      .catch(() => {
+        if (!cancelled) setQrError(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [showQr, state.inviteUrl])
+
+  useEffect(() => {
+    if (!showQr) return
+
+    qrCloseButtonRef.current?.focus()
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowQr(false)
+    }
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape)
+      qrTriggerRef.current?.focus()
+    }
+  }, [showQr])
 
   const handleBoardReady = (board: BingoBoard) => {
     updateBoardSetup(board)
@@ -127,11 +167,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
 
         {isHost ? (
           <section className={styles.inviteArea} aria-label="Match invite">
-            <button
-              type="button"
-              onClick={state.error ? handleRetry : handleShareInvite}
-              disabled={!state.inviteUrl && !state.error}
-              aria-label={state.error ? 'Retry invite connection' : undefined}
+            <div
               data-ready={state.inviteUrl ? 'true' : 'false'}
               data-error={state.error ? 'true' : 'false'}
               className={styles.invitePill}
@@ -144,14 +180,29 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
                   {state.error
                     ? state.error
                     : state.inviteUrl
-                      ? 'Tap to share or copy the Match link.'
+                      ? 'Share the link or show a QR code.'
                       : 'You can arrange your Board while the Match opens.'}
                 </span>
               </span>
-              <span className={styles.inviteAction}>
-                {state.error ? <><RotateCcw className="mr-1 inline h-4 w-4" aria-hidden="true" />Try again</> : state.inviteUrl ? <><Share2 className="mr-1 inline h-4 w-4" aria-hidden="true" />Share</> : <Loader2 className="h-4 w-4 animate-spin" aria-label="Preparing invite" />}
-              </span>
-            </button>
+              {state.error ? (
+                <button type="button" onClick={handleRetry} aria-label="Retry invite connection" className={styles.inviteActionButton}>
+                  <RotateCcw className="mr-1 inline h-4 w-4" aria-hidden="true" />Try again
+                </button>
+              ) : state.inviteUrl ? (
+                <span className={styles.inviteActions} aria-label="Invite actions">
+                  <button type="button" onClick={handleShareInvite} aria-label="Share invite link" className={styles.inviteIconButton}>
+                    <Share2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                  <button ref={qrTriggerRef} type="button" onClick={() => setShowQr(true)} aria-label="Show invite QR code" className={styles.inviteIconButton}>
+                    <QrCode className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </span>
+              ) : (
+                <button type="button" disabled aria-label="Preparing invite" className={styles.inviteStateButton}>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                </button>
+              )}
+            </div>
 
             {inviteFeedback === 'shared' ? <p className={styles.inviteFeedback} role="status"><Check className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Invite shared</p> : null}
             {inviteFeedback === 'copied' ? <p className={styles.inviteFeedback} role="status"><Copy className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Invite link copied</p> : null}
@@ -215,6 +266,24 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
 
         </section>
       </div>
+
+      {showQr && state.inviteUrl ? (
+        <div className={styles.rulesSheet} role="presentation" onClick={() => setShowQr(false)}>
+          <section className={styles.rulesPanel} role="dialog" aria-modal="true" aria-labelledby="invite-qr-title" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.rulesHeader}>
+              <div>
+                <h2 id="invite-qr-title" className={styles.rulesHeading}>Invite QR code</h2>
+                <p className={styles.inviteReason}>Scan to join this BINGO Match.</p>
+              </div>
+              <button ref={qrCloseButtonRef} type="button" onClick={() => setShowQr(false)} aria-label="Close invite QR code" className={styles.rulesClose}><X className="h-4 w-4" aria-hidden="true" /></button>
+            </div>
+            <div className={styles.qrFrame}>
+              {qrDataUrl ? <img src={qrDataUrl} alt="QR code for the Bingo Match invite" className={styles.qrImage} /> : qrError ? <p role="alert">Could not create the QR code. Copy the invite link below.</p> : <p role="status">Preparing QR code…</p>}
+            </div>
+            <a className={styles.inviteLink} href={state.inviteUrl}>{state.inviteUrl}</a>
+          </section>
+        </div>
+      ) : null}
 
       {showRules ? (
         <div className={styles.rulesSheet} role="presentation" onClick={() => setShowRules(false)}>

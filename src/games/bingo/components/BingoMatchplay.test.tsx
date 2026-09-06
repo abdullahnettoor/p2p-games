@@ -114,7 +114,7 @@ describe('BingoMatchplay', () => {
     expect(guestView.querySelector('[data-call-number="7"][data-ink="host"]')).toBeInTheDocument()
   })
 
-  it('places a Call slip over the Board without reserving a document-flow slot', () => {
+  it('keeps the Call slip in the status strip so it cannot cover Board cells', () => {
     const { hostCoordinator } = createTestCoordinators()
     const { container } = render(<BingoMatchplay coordinator={hostCoordinator} onExit={vi.fn()} />)
 
@@ -123,8 +123,10 @@ describe('BingoMatchplay', () => {
       fireEvent.click(screen.getByRole('button', { name: '7' }))
     })
 
-    expect(screen.getByLabelText('Latest Call')).toBeInTheDocument()
-    expect(container.querySelector('[class*="callSlipSlot"]')).not.toBeInTheDocument()
+    const callSlip = screen.getByLabelText('Latest Call')
+    expect(callSlip).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Match status' })).getByLabelText('Latest Call')).toBe(callSlip)
+    expect(container.querySelector('.boardStage [aria-label="Latest Call"]')).not.toBeInTheDocument()
   })
 
   it('opens rules and Match notes as sheets without adding persistent rows', () => {

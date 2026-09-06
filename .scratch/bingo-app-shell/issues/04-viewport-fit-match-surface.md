@@ -17,7 +17,7 @@ Consolidate the Match surface from a 1211px scrolling document into a `100dvh` c
 - [x] The action row carries Pass, Doodle, and Match notes.
 - [x] The Board is flex-grow, square, sized by available height and capped by width; width-driven `aspect-ratio: 1` sizing is replaced.
 - [x] The Board is the largest object on every supported viewport.
-- [x] The Call slip is a transient overlay over the Board edge; the unconditional 56px reserved slot is removed.
+- [ ] The Call slip is a transient overlay pinned to the turn/status region and never intercepts Board cells; the unconditional 56px reserved slot is removed.
 - [x] The recent-Calls trail renders below the Board only when height permits and is the first thing cut at 320px.
 - [x] Match notes, rules, and reactions open as sheets or popovers costing no persistent height.
 - [x] The reconnection banner overlays pinned to the Shell bar and never reflows the Board.

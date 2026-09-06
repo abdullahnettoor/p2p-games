@@ -85,12 +85,12 @@ describe('BingoMatchLobby', () => {
     expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
   })
 
-  it('shares the invite through the native share sheet from the invite pill', async () => {
+  it('shares the invite through the native share sheet from the invite actions', async () => {
     const session = await createHostSession()
     render(<BingoMatchLobby session={session} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Invite a friend/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Share invite link' }))
     })
 
     expect(navigator.share).toHaveBeenCalledWith({
@@ -107,7 +107,7 @@ describe('BingoMatchLobby', () => {
     render(<BingoMatchLobby session={session} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Invite a friend/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Share invite link' }))
     })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(session.state.inviteUrl)
@@ -120,7 +120,7 @@ describe('BingoMatchLobby', () => {
     render(<BingoMatchLobby session={session} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Invite a friend/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Share invite link' }))
     })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(session.state.inviteUrl)
@@ -136,11 +136,26 @@ describe('BingoMatchLobby', () => {
     render(<BingoMatchLobby session={session} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Invite a friend/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Share invite link' }))
     })
 
     expect(screen.getByRole('alert')).toHaveTextContent('Could not share automatically')
     expect(screen.getByRole('link')).toHaveAttribute('href', session.state.inviteUrl)
+  })
+
+  it('opens an in-app QR sheet without invoking the share sheet', async () => {
+    const session = await createHostSession()
+    render(<BingoMatchLobby session={session} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show invite QR code' }))
+
+    expect(screen.getByRole('dialog', { name: 'Invite QR code' })).toBeInTheDocument()
+    expect(await screen.findByRole('img', { name: 'QR code for the Bingo Match invite' })).toBeInTheDocument()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close invite QR code' }))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Invite QR code' })).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Show invite QR code' }))
+    expect(navigator.share).not.toHaveBeenCalled()
   })
 
   it('shows an actionable failure reason and retries without removing the board', async () => {
