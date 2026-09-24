@@ -7,7 +7,8 @@ import { TicTacToeP2P } from '@/games/tictactoe/components/TicTacToeP2P'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 
 function TicTacToeContent() {
-  const matchParam = useSearchParams().get('match')
+  const searchParams = useSearchParams()
+  const matchParam = searchParams.get('room') || searchParams.get('match')
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto w-full py-4">

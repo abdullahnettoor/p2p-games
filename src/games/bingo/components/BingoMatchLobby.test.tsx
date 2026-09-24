@@ -254,4 +254,97 @@ describe('BingoMatchLobby', () => {
 
     await waitFor(() => expect(onMatchStart).toHaveBeenCalled())
   })
+
+  it('displays the room code when available in the lobby state', async () => {
+    const session = await createHostSession()
+    session.state.roomCode = 'K7M4QX'
+
+    render(<BingoMatchLobby session={session} />)
+    expect(screen.getByText('Room code:')).toBeInTheDocument()
+    expect(screen.getByText('K7M4QX')).toBeInTheDocument()
+  })
+
+  it('displays reconnecting status in the invite pill when signaling drops', async () => {
+    const session = await createHostSession()
+    session.state.isReconnecting = true
+
+    render(<BingoMatchLobby session={session} />)
+    expect(screen.getByText(/Reconnecting…/i)).toBeInTheDocument()
+    expect(screen.getByText(/Reconnecting to matchmaking…/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show invite QR code' })).not.toBeInTheDocument()
+  })
+
+  it('hides room code entry input for hosts', async () => {
+    const session = await createHostSession()
+    render(<BingoMatchLobby session={session} />)
+    expect(screen.queryByRole('button', { name: /Join another room with a code/i })).not.toBeInTheDocument()
+  })
+
+  it('shows room code entry input for guests and navigates on submit', async () => {
+    const [, guestTransport] = createLoopbackTransportPair()
+    const guestSession = new LobbySession<BingoBoard>({
+      transport: guestTransport,
+      playerName: 'GuestPlayer',
+      validateSetup: (board) => validateBingoBoard(board).valid,
+    })
+    const onJoinRoomCode = vi.fn()
+
+    render(<BingoMatchLobby session={guestSession} onJoinRoomCode={onJoinRoomCode} />)
+    const toggleButton = screen.getByRole('button', { name: /Join another room with a code/i })
+    fireEvent.click(toggleButton)
+
+    const input = screen.getByPlaceholderText('CODE')
+    fireEvent.change(input, { target: { value: 'k7m4qx' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+
+    expect(onJoinRoomCode).toHaveBeenCalledWith('K7M4QX')
+  })
+
+  it('closes QR modal when signaling drops into reconnecting or error', async () => {
+    const session = await createHostSession()
+    render(<BingoMatchLobby session={session} />)
+
+    // Open QR modal
+    const qrButton = screen.getByRole('button', { name: 'Show invite QR code' })
+    fireEvent.click(qrButton)
+    expect(screen.getByRole('dialog', { name: 'Invite QR code' })).toBeInTheDocument()
+
+    // Signaling drops into reconnecting
+    act(() => {
+      ;(session as any).state = { ...(session as any).state, isReconnecting: true }
+      ;(session as any).notify()
+    })
+
+    expect(screen.queryByRole('dialog', { name: 'Invite QR code' })).not.toBeInTheDocument()
+  })
+
+  it("renders Play with a stranger button when onPlayStranger is provided", async () => {
+    const session = await createHostSession()
+    const onPlayStranger = vi.fn()
+    render(<BingoMatchLobby session={session} onPlayStranger={onPlayStranger} />)
+
+    const strangerBtn = screen.getByRole("button", { name: /Play with a stranger/i })
+    expect(strangerBtn).toBeInTheDocument()
+
+    fireEvent.click(strangerBtn)
+    expect(onPlayStranger).toHaveBeenCalledTimes(1)
+  })
+
+  it("hides invite area and locks name input when isStrangerMatch is true", async () => {
+    const session = await createHostSession()
+    session.state.localPlayer.name = "Swift Otter"
+
+    render(<BingoMatchLobby session={session} isStrangerMatch={true} />)
+
+    // Invite area with QR and share buttons must NOT be rendered
+    expect(screen.queryByLabelText("Match invite")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Show invite QR code" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Room code:/i)).not.toBeInTheDocument()
+
+    // Name input is disabled so the auto-generated stranger name cannot be overwritten
+    const nameInput = screen.getByLabelText(/Your name/i)
+    expect(nameInput).toBeDisabled()
+    expect(nameInput).toHaveValue("Swift Otter")
+  })
 })
+

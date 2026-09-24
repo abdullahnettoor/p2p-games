@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { LobbySession } from '@/core/lobby/LobbySession'
 import { useLobby } from '@/core/lobby/useLobby'
+import { extractRoomCode } from '@/core/lobby/roomCode'
 import { BingoBoard } from '../types'
 import { BingoBoardSetup } from './BingoBoardSetup'
 import { BingoBoardView } from './BingoBoardView'
@@ -17,11 +18,11 @@ import {
   CircleHelp,
   Copy,
   QrCode,
-
   Loader2,
   Pencil,
   RotateCcw,
   Share2,
+  Users,
   X,
 } from 'lucide-react'
 import styles from './BingoMatchLobby.module.css'
@@ -29,6 +30,9 @@ import styles from './BingoMatchLobby.module.css'
 export interface BingoMatchLobbyProps {
   session: LobbySession<BingoBoard>
   onExit?: () => void
+  onJoinRoomCode?: (code: string) => void
+  onPlayStranger?: () => void
+  isStrangerMatch?: boolean
   className?: string
 }
 
@@ -37,6 +41,9 @@ type InviteFeedback = 'idle' | 'shared' | 'copied' | 'error'
 export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   session,
   onExit,
+  onJoinRoomCode,
+  onPlayStranger,
+  isStrangerMatch = false,
   className,
 }) => {
   const { state, updatePlayerName, updateBoardSetup, setReady } = useLobby(session)
@@ -47,6 +54,8 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   const [showQr, setShowQr] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [qrError, setQrError] = useState(false)
+  const [showJoinInput, setShowJoinInput] = useState(false)
+  const [inputRoomCode, setInputRoomCode] = useState('')
   const qrTriggerRef = useRef<HTMLButtonElement>(null)
   const qrCloseButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -55,6 +64,10 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   const isRemoteConnected = Boolean(state.remotePlayer?.connected)
   const isRemoteReady = Boolean(state.remotePlayer?.isReady)
   const isStarting = state.status === 'starting'
+
+  useEffect(() => {
+    setLocalNameInput(state.localPlayer.name)
+  }, [state.localPlayer.name])
 
   const copyInvite = async (inviteUrl: string) => {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard is unavailable')
@@ -86,6 +99,25 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
       }
     }
   }
+
+  const handleJoinByCode = (e: React.FormEvent) => {
+    e.preventDefault()
+    const code = extractRoomCode(inputRoomCode)
+    if (!code) return
+    if (onJoinRoomCode) {
+      onJoinRoomCode(code)
+      return
+    }
+    if (typeof window !== 'undefined') {
+      window.location.assign(`/bingo?room=${encodeURIComponent(code)}`)
+    }
+  }
+
+  useEffect(() => {
+    if (state.isReconnecting || state.error) {
+      setShowQr(false)
+    }
+  }, [state.isReconnecting, state.error])
 
   useEffect(() => {
     if (!showQr || !state.inviteUrl) return
@@ -133,11 +165,17 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
 
   const connectionCopy = state.error && !isHost
     ? `Connection failed · ${state.error}`
-    : !isRemoteConnected
-      ? state.localPlayer.role === 'host' ? 'Waiting for a friend to join' : 'Connecting to the Host'
-      : isRemoteReady
-        ? 'Connected · both Players are arranging'
-        : 'Connected · your friend is arranging'
+    : isStrangerMatch
+      ? !isRemoteConnected
+        ? 'Matching with a stranger…'
+        : isRemoteReady
+          ? 'Connected with a stranger · both players are arranging'
+          : 'Connected with a stranger · opponent is arranging'
+      : !isRemoteConnected
+        ? state.localPlayer.role === 'host' ? 'Waiting for a friend to join' : 'Connecting to the Host'
+        : isRemoteReady
+          ? 'Connected · both Players are arranging'
+          : 'Connected · your friend is arranging'
 
   return (
     <div className={cn('bingoTokenScope', styles.lobbySurface, className)}>
@@ -165,28 +203,41 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
           </div>
         </header>
 
-        {isHost ? (
+        {isHost && !isStrangerMatch ? (
           <section className={styles.inviteArea} aria-label="Match invite">
             <div
-              data-ready={state.inviteUrl ? 'true' : 'false'}
+              data-ready={state.inviteUrl && !state.isReconnecting ? 'true' : 'false'}
+              data-reconnecting={state.isReconnecting ? 'true' : 'false'}
               data-error={state.error ? 'true' : 'false'}
               className={styles.invitePill}
             >
               <span className={styles.inviteCopy}>
                 <span className={styles.inviteLabel}>
-                  {state.error ? 'Invite needs attention' : state.inviteUrl ? 'Invite a friend' : 'Preparing invite'}
+                  {state.error
+                    ? 'Invite needs attention'
+                    : state.isReconnecting
+                      ? 'Reconnecting…'
+                      : state.inviteUrl
+                        ? 'Invite a friend'
+                        : 'Preparing invite'}
                 </span>
                 <span className={styles.inviteReason}>
                   {state.error
                     ? state.error
-                    : state.inviteUrl
-                      ? 'Share the link or show a QR code.'
-                      : 'You can arrange your Board while the Match opens.'}
+                    : state.isReconnecting
+                      ? 'Reconnecting to matchmaking… Your invite link will resume automatically.'
+                      : state.inviteUrl
+                        ? 'Share the link, code, or show a QR code.'
+                        : 'You can arrange your Board while the Match opens.'}
                 </span>
               </span>
               {state.error ? (
                 <button type="button" onClick={handleRetry} aria-label="Retry invite connection" className={styles.inviteActionButton}>
                   <RotateCcw className="mr-1 inline h-4 w-4" aria-hidden="true" />Try again
+                </button>
+              ) : state.isReconnecting ? (
+                <button type="button" disabled aria-label="Reconnecting to matchmaking" className={styles.inviteStateButton}>
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-500" aria-hidden="true" />
                 </button>
               ) : state.inviteUrl ? (
                 <span className={styles.inviteActions} aria-label="Invite actions">
@@ -204,6 +255,13 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
               )}
             </div>
 
+            {state.roomCode && !state.isReconnecting && !state.error ? (
+              <div className={styles.roomCodeSnippet}>
+                <span>Room code:</span>
+                <strong className={styles.roomCodeValue}>{state.roomCode}</strong>
+              </div>
+            ) : null}
+
             {inviteFeedback === 'shared' ? <p className={styles.inviteFeedback} role="status"><Check className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Invite shared</p> : null}
             {inviteFeedback === 'copied' ? <p className={styles.inviteFeedback} role="status"><Copy className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Invite link copied</p> : null}
             {inviteFeedback === 'error' ? (
@@ -212,6 +270,59 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
               </p>
             ) : null}
           </section>
+        ) : null}
+
+        {!isRemoteConnected && !isStrangerMatch && onPlayStranger ? (
+          <div className={styles.strangerSection}>
+            <button
+              type="button"
+              onClick={onPlayStranger}
+              className={styles.strangerButton}
+            >
+              <Users className="h-4 w-4" aria-hidden="true" />
+              <span>Play with a stranger</span>
+            </button>
+          </div>
+        ) : null}
+
+        {!isHost && !isRemoteConnected && !isStrangerMatch ? (
+          <div className={styles.joinCodeSection}>
+            {!showJoinInput ? (
+              <button
+                type="button"
+                onClick={() => setShowJoinInput(true)}
+                className={styles.joinCodeToggle}
+              >
+                Join another room with a code
+              </button>
+            ) : (
+              <form onSubmit={handleJoinByCode} className={styles.joinCodeForm}>
+                <label htmlFor="room-code-input" className="sr-only">Room code</label>
+                <input
+                  id="room-code-input"
+                  type="text"
+                  placeholder="CODE"
+                  maxLength={8}
+                  value={inputRoomCode}
+                  onChange={(e) => setInputRoomCode(e.target.value.toUpperCase())}
+                  className={styles.joinCodeInput}
+                  autoFocus
+                />
+                <button type="submit" className={styles.joinCodeButton}>
+                  Join
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowJoinInput(false)}
+                  className={styles.rulesClose}
+                  style={{ minWidth: '2rem', minHeight: '2rem', padding: '0.2rem' }}
+                  aria-label="Cancel entering room code"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </form>
+            )}
+          </div>
         ) : null}
 
         <p className={styles.connectionLine} data-connected={isRemoteConnected ? 'true' : 'false'} role="status" aria-live="polite">
@@ -225,13 +336,15 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
         <section className={styles.boardSheet} aria-label="Bingo Lobby and Board setup">
           <div className={styles.identityRow}>
             <div>
-              <label htmlFor="display-name" className={styles.identityLabel}>Your name</label>
+              <label htmlFor="display-name" className={styles.identityLabel}>
+                Your name {isStrangerMatch ? '(stranger match)' : ''}
+              </label>
               <input
                 id="display-name"
                 type="text"
                 maxLength={20}
                 value={localNameInput}
-                disabled={isLocalReady}
+                disabled={isLocalReady || isStrangerMatch}
                 onChange={(event) => {
                   setLocalNameInput(event.target.value)
                   updatePlayerName(event.target.value)
@@ -245,7 +358,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
           {isLocalReady ? (
             <div className={styles.lockedBoard}>
               <h2 className={styles.lockedHeading}><CheckCircle2 className="h-5 w-5" aria-hidden="true" /> Board ready</h2>
-              <p className={styles.lockedCopy}>{isRemoteReady ? 'Both Players are ready. Starting the Match.' : 'Waiting for your friend to finish.'}</p>
+              <p className={styles.lockedCopy}>{isRemoteReady ? 'Both Players are ready. Starting the Match.' : isStrangerMatch ? 'Waiting for opponent to finish.' : 'Waiting for your friend to finish.'}</p>
               {state.localPlayer.setupConfig ? (
                 <BingoBoardView board={state.localPlayer.setupConfig} calls={[]} playersById={{}} disabled />
               ) : null}

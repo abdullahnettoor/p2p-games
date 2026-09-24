@@ -4,6 +4,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PeerJSTransport } from '@/core/transport/PeerJSTransport'
 import { TransportStatus } from '@/core/transport/types'
 import { PlayerRole } from '@/core/games/types'
+import {
+  generateRoomCode,
+  formatHostPeerId,
+  resolveTargetPeerId,
+  createGameInviteUrl,
+  extractRoomCode,
+} from '@/core/lobby/roomCode'
 import { applyMove, initState, serializeBoard, validateMove } from '../engine'
 import { TicTacToeState } from '../types'
 
@@ -62,7 +69,19 @@ export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => 
     startedAtRef.current = Date.now()
     let cancelled = false
 
-    const transport = new PeerJSTransport({ role, targetPeerId: matchId })
+    const initialHostId = role === 'host' ? formatHostPeerId('tictactoe', generateRoomCode()) : undefined
+    const resolvedTargetId =
+      role === 'guest' && matchId ? resolveTargetPeerId('tictactoe', matchId) : undefined
+
+    const transport = new PeerJSTransport({
+      role,
+      localPlayerId: initialHostId,
+      targetPeerId: resolvedTargetId,
+      onIdCollision:
+        role === 'host'
+          ? () => formatHostPeerId('tictactoe', generateRoomCode())
+          : undefined,
+    })
     transportRef.current = transport
 
     const unsubs = [
@@ -152,8 +171,12 @@ export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => 
   const inviteUrl = useMemo(() => {
     if (role !== 'host' || !localPeerId) return ''
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    return `${origin}/tictactoe?match=${localPeerId}`
+    return createGameInviteUrl(origin, '/tictactoe', localPeerId)
   }, [role, localPeerId])
+
+  const roomCode = useMemo(() => {
+    return extractRoomCode(localPeerId)
+  }, [localPeerId])
 
   const handleCellClick = (cellIndex: number) => {
     const transport = transportRef.current
@@ -283,15 +306,25 @@ export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => 
       )}
 
       {role === 'host' && (
-        <label className="block space-y-1">
-          <span className="text-xs font-bold text-slate-400">Invite link</span>
-          <input
-            data-testid="poc-invite-url"
-            readOnly
-            value={inviteUrl}
-            className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300"
-          />
-        </label>
+        <div className="space-y-3">
+          {roomCode && (
+            <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-medium">Room Code</span>
+              <span className="font-mono text-sm font-bold tracking-widest text-indigo-400">
+                {roomCode}
+              </span>
+            </div>
+          )}
+          <label className="block space-y-1">
+            <span className="text-xs font-bold text-slate-400">Invite link</span>
+            <input
+              data-testid="poc-invite-url"
+              readOnly
+              value={inviteUrl}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300"
+            />
+          </label>
+        </div>
       )}
 
       <section className="space-y-3">
