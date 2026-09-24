@@ -7,6 +7,7 @@ import {
   StatusChangeHandler,
   PlayerEventHandler,
   ErrorEventHandler,
+  SignalingChangeHandler,
 } from './types'
 
 export interface LoopbackTransportOptions {
@@ -27,6 +28,7 @@ export class LoopbackTransport implements ITransport {
   private playerJoinHandlers = new Set<PlayerEventHandler>()
   private playerLeaveHandlers = new Set<PlayerEventHandler>()
   private errorHandlers = new Set<ErrorEventHandler>()
+  private signalingChangeHandlers = new Set<SignalingChangeHandler>()
 
   constructor(options: LoopbackTransportOptions) {
     this.role = options.role
@@ -118,6 +120,11 @@ export class LoopbackTransport implements ITransport {
   public onError(handler: ErrorEventHandler): () => void {
     this.errorHandlers.add(handler)
     return () => this.errorHandlers.delete(handler)
+  }
+
+  public onSignalingChange(handler: SignalingChangeHandler): () => void {
+    this.signalingChangeHandlers.add(handler)
+    return () => this.signalingChangeHandlers.delete(handler)
   }
 
   public disconnect(): void {

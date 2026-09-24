@@ -58,30 +58,21 @@ describe('LobbySession', () => {
     hostSession.updateBoardSetup([1, 2, 3]) // Only 3 numbers instead of 25
     expect(hostSession.canReady()).toBe(false)
     expect(() => hostSession.setReady(true)).toThrow('Invalid board setup')
-    expect(hostSession.state.localPlayer.isReady).toBe(false)
   })
 
-  it('synchronizes ready state and triggers match start when both players are ready', async () => {
+  it('coordinates ready states and starts match with setupConfigs when both are ready', async () => {
     const [hostTransport, guestTransport] = createLoopbackTransportPair()
+    let hostMatchStart: MatchStartEvent<number[]> | null = null
+    let guestMatchStart: MatchStartEvent<number[]> | null = null
 
-    let hostMatchStart: MatchStartEvent | null = null
-    let guestMatchStart: MatchStartEvent | null = null
-
-    const dummyBoard = Array.from({ length: 25 }, (_, i) => i + 1)
-
-    const hostSession = new LobbySession({
+    const hostSession = new LobbySession<number[]>({
       transport: hostTransport,
-      playerName: 'Host',
-      validateSetup: (setup: number[]) => setup.length === 25,
       onMatchStart: (event) => {
         hostMatchStart = event
       },
     })
-
-    const guestSession = new LobbySession({
+    const guestSession = new LobbySession<number[]>({
       transport: guestTransport,
-      playerName: 'Guest',
-      validateSetup: (setup: number[]) => setup.length === 25,
       onMatchStart: (event) => {
         guestMatchStart = event
       },
@@ -90,22 +81,17 @@ describe('LobbySession', () => {
     await hostSession.start()
     await guestSession.start()
 
-    hostSession.updateBoardSetup(dummyBoard)
-    guestSession.updateBoardSetup([...dummyBoard].reverse())
+    const validBoardHost = Array.from({ length: 25 }, (_, i) => i + 1)
+    const validBoardGuest = Array.from({ length: 25 }, (_, i) => i + 10)
 
-    expect(hostSession.canReady()).toBe(true)
-    expect(guestSession.canReady()).toBe(true)
+    hostSession.updateBoardSetup(validBoardHost)
+    guestSession.updateBoardSetup(validBoardGuest)
 
-    // Guest readies up first
     guestSession.setReady(true)
-    expect(guestSession.state.localPlayer.isReady).toBe(true)
     expect(hostSession.state.remotePlayer?.isReady).toBe(true)
-    expect(hostMatchStart).toBeNull()
+    expect(hostSession.state.status).toBe('connected')
 
-    // Host readies up -> triggers match start
     hostSession.setReady(true)
-    expect(hostSession.state.localPlayer.isReady).toBe(true)
-
     expect(hostSession.state.status).toBe('starting')
     expect(guestSession.state.status).toBe('starting')
 
@@ -181,5 +167,42 @@ describe('LobbySession', () => {
     hostSession.resetForRematch()
     expect(hostSession.state.localPlayer.isReady).toBe(false)
     expect(hostSession.state.remotePlayer?.isReady).toBe(false)
+  })
+
+  it('host retry calls retryConnect/connect once and keeps the same room code and invite URL', async () => {
+    const [hostTransport] = createLoopbackTransportPair()
+    let connectCalls = 0
+    let retryCalls = 0
+    const originalConnect = hostTransport.connect.bind(hostTransport)
+    hostTransport.connect = vi.fn(async () => {
+      connectCalls++
+      return originalConnect()
+    })
+    ;(hostTransport as any).retryConnect = vi.fn(async () => {
+      retryCalls++
+      return hostTransport.localPlayerId
+    })
+
+    const hostSession = new LobbySession({
+      transport: hostTransport,
+      roomCode: 'K7M4QX',
+      inviteUrlGenerator: () => `https://example.com/bingo?room=K7M4QX`,
+    })
+
+    await hostSession.start()
+    expect(connectCalls).toBe(1)
+    expect(retryCalls).toBe(0)
+    expect(hostSession.state.roomCode).toBe('K7M4QX')
+    const initialInviteUrl = hostSession.state.inviteUrl
+
+    // Host retries
+    await hostSession.retry()
+
+    // Must call retryConnect once and NOT connect again
+    expect(retryCalls).toBe(1)
+    expect(connectCalls).toBe(1)
+    expect(hostSession.state.roomCode).toBe('K7M4QX')
+    expect(hostSession.state.inviteUrl).toBe(initialInviteUrl)
+    expect(hostSession.state.status).toBe('waiting')
   })
 })

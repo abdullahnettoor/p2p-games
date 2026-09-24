@@ -1,5 +1,6 @@
 import { ITransport, TransportMessage } from '@/core/transport/types'
 import { LobbyPlayer, LobbyState, LobbyStatus, MatchStartEvent } from './types'
+import { extractRoomCode } from './roomCode'
 
 export const PLAYER_NAME_STORAGE_KEY = 'games:player:name'
 
@@ -24,6 +25,7 @@ function persistPlayerName(name: string): void {
 export interface LobbyCoordinatorOptions<TSetupConfig = unknown> {
   transport: ITransport
   playerName?: string
+  roomCode?: string
   inviteUrlGenerator?: (matchId: string) => string
   validateSetup?: (config: TSetupConfig) => boolean
   onMatchStart?: (event: MatchStartEvent<TSetupConfig>) => void
@@ -60,6 +62,8 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       },
       remotePlayer: null,
       inviteUrl: null,
+      roomCode: options.roomCode ?? extractRoomCode(this.transport.localPlayerId),
+      isReconnecting: false,
       error: null,
     }
 
@@ -84,57 +88,80 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       this.state = {
         ...this.state,
         status: 'error',
+        isReconnecting: false,
         error: err.message,
       }
       this.notify()
     })
 
+    const unsubSignaling = this.transport.onSignalingChange?.((isReconnecting: boolean) => {
+      if (this.state.status !== 'error') {
+        this.state = {
+          ...this.state,
+          isReconnecting,
+        }
+        this.notify()
+      }
+    })
+
     this.unsubscribers.push(unsubMsg, unsubPlayerJoin, unsubPlayerLeave, unsubStatus, unsubError)
+    if (unsubSignaling) {
+      this.unsubscribers.push(unsubSignaling)
+    }
+  }
+
+  private applyConnectedState(peerId: string): void {
+    const derivedRoomCode = extractRoomCode(peerId)
+
+    const inviteUrl =
+      this.transport.role === 'host'
+        ? this.inviteUrlGenerator
+          ? this.inviteUrlGenerator(peerId)
+          : typeof window !== 'undefined'
+            ? `${window.location.origin}${window.location.pathname}?match=${peerId}`
+            : `?match=${peerId}`
+        : null
+
+    const newStatus: LobbyStatus =
+      this.transport.status === 'connected'
+        ? 'connected'
+        : this.transport.role === 'host'
+          ? 'waiting'
+          : 'connecting'
+
+    this.state = {
+      ...this.state,
+      status: newStatus,
+      inviteUrl,
+      roomCode: derivedRoomCode ?? this.state.roomCode,
+      isReconnecting: false,
+      error: null,
+      localPlayer: {
+        ...this.state.localPlayer,
+        id: peerId,
+      },
+    }
+
+    // If already connected to remote player, initialize remote player
+    if (this.transport.remotePlayerId) {
+      this.handlePlayerJoin(this.transport.remotePlayerId)
+    }
+
+    this.notify()
   }
 
   public async start(): Promise<void> {
     try {
-      this.state = { ...this.state, status: 'connecting' }
+      this.state = { ...this.state, status: 'connecting', isReconnecting: false }
       this.notify()
 
       const peerId = await this.transport.connect()
-
-      const inviteUrl =
-        this.transport.role === 'host'
-          ? this.inviteUrlGenerator
-            ? this.inviteUrlGenerator(peerId)
-            : typeof window !== 'undefined'
-              ? `${window.location.origin}${window.location.pathname}?match=${peerId}`
-              : `?match=${peerId}`
-          : null
-
-      const newStatus: LobbyStatus =
-        this.transport.status === 'connected'
-          ? 'connected'
-          : this.transport.role === 'host'
-            ? 'waiting'
-            : 'connecting'
-
-      this.state = {
-        ...this.state,
-        status: newStatus,
-        inviteUrl,
-        localPlayer: {
-          ...this.state.localPlayer,
-          id: peerId,
-        },
-      }
-
-      // If already connected to remote player, initialize remote player
-      if (this.transport.remotePlayerId) {
-        this.handlePlayerJoin(this.transport.remotePlayerId)
-      }
-
-      this.notify()
+      this.applyConnectedState(peerId)
     } catch (err) {
       this.state = {
         ...this.state,
         status: 'error',
+        isReconnecting: false,
         error: err instanceof Error ? err.message : String(err),
       }
       this.notify()
@@ -146,6 +173,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     this.state = {
       ...this.state,
       status: 'connecting',
+      isReconnecting: false,
       error: null,
     }
     this.notify()
@@ -154,10 +182,20 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       const reconnect = (this.transport as ITransport & {
         retryConnect?: () => Promise<string>
       }).retryConnect
-      if (reconnect) await reconnect.call(this.transport)
-      await this.start()
-    } catch {
-      // start() records the plain-language failure in state for the Lobby pill.
+
+      const peerId = reconnect
+        ? await reconnect.call(this.transport)
+        : await this.transport.connect()
+
+      this.applyConnectedState(peerId)
+    } catch (err) {
+      this.state = {
+        ...this.state,
+        status: 'error',
+        isReconnecting: false,
+        error: err instanceof Error ? err.message : String(err),
+      }
+      this.notify()
     }
   }
 

@@ -60,6 +60,7 @@ export type TransportEventHandler<T = TransportMessage> = (message: T) => void
 export type StatusChangeHandler = (status: TransportStatus) => void
 export type PlayerEventHandler = (playerId: string) => void
 export type ErrorEventHandler = (error: Error) => void
+export type SignalingChangeHandler = (isReconnecting: boolean) => void
 
 export interface ITransport<TMessage = TransportMessage> {
   readonly status: TransportStatus
@@ -74,5 +75,6 @@ export interface ITransport<TMessage = TransportMessage> {
   onPlayerJoin(handler: PlayerEventHandler): () => void
   onPlayerLeave(handler: PlayerEventHandler): () => void
   onError(handler: ErrorEventHandler): () => void
+  onSignalingChange?: (handler: SignalingChangeHandler) => () => void
   disconnect(): void
 }
