@@ -254,4 +254,37 @@ describe('BingoMatchLobby', () => {
 
     await waitFor(() => expect(onMatchStart).toHaveBeenCalled())
   })
-})
+  it('displays the room code when available in the lobby state', async () => {
+    const session = await createHostSession()
+    session.state.roomCode = 'K7M4QX'
+
+    render(<BingoMatchLobby session={session} />)
+    expect(screen.getByText('Room code:')).toBeInTheDocument()
+    expect(screen.getByText('K7M4QX')).toBeInTheDocument()
+  })
+
+  it('displays reconnecting status in the invite pill when signaling drops', async () => {
+    const session = await createHostSession()
+    session.state.isReconnecting = true
+
+    render(<BingoMatchLobby session={session} />)
+    expect(screen.getByText(/Reconnecting…/i)).toBeInTheDocument()
+    expect(screen.getByText(/Reconnecting to matchmaking…/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show invite QR code' })).not.toBeInTheDocument()
+  })
+
+  it('shows room code entry input and navigates on submit', async () => {
+    const session = await createHostSession()
+    const onJoinRoomCode = vi.fn()
+
+    render(<BingoMatchLobby session={session} onJoinRoomCode={onJoinRoomCode} />)
+    const toggleButton = screen.getByRole('button', { name: /Have a friend's room code\? Enter code/i })
+    fireEvent.click(toggleButton)
+
+    const input = screen.getByPlaceholderText('CODE')
+    fireEvent.change(input, { target: { value: 'k7m4qx' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+
+    expect(onJoinRoomCode).toHaveBeenCalledWith('K7M4QX')
+  })
+});

@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live as local Markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues (`abdullahnettoor/p2p-games`), managed with `gh`. Older work lives in `.scratch/` as read-only history. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

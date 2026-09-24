@@ -8,7 +8,7 @@ import { Loader2 } from 'lucide-react'
 function BingoContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const matchParam = searchParams.get('match')
+  const matchParam = searchParams.get('room') || searchParams.get('match')
   const [mode, setMode] = useState<'online-host' | 'online-guest'>(() => (
     matchParam ? 'online-guest' : 'online-host'
   ))

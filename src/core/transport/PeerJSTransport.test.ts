@@ -23,9 +23,15 @@ class MockPeer extends EventEmitter {
   constructor(id?: string) {
     super()
     this.id = id || `peer-${Math.random().toString(36).substring(2, 7)}`
-    setTimeout(() => {
-      this.emit('open', this.id)
-    }, 5)
+    if (this.id === 'colliding-id') {
+      setTimeout(() => {
+        this.emit('error', Object.assign(new Error('ID taken'), { type: 'unavailable-id' }))
+      }, 5)
+    } else {
+      setTimeout(() => {
+        this.emit('open', this.id)
+      }, 5)
+    }
   }
 
   connect(targetId: string) {
@@ -366,6 +372,75 @@ describe('PeerJSTransport signaling reconnect', () => {
 
     host.disconnect()
   })
+
+  it('regenerates host peer ID on initial collision when onIdCollision is provided', async () => {
+    vi.useFakeTimers()
+    const collisionSpy = vi.fn(() => 'fresh-id')
+    const host = new PeerJSTransport({
+      role: 'host',
+      localPlayerId: 'colliding-id',
+      onIdCollision: collisionSpy,
+    })
+
+    const connectPromise = host.connect()
+    await vi.advanceTimersByTimeAsync(20)
+    const assignedId = await connectPromise
+
+    expect(collisionSpy).toHaveBeenCalledTimes(1)
+    expect(assignedId).toBe('fresh-id')
+    expect(host.localPlayerId).toBe('fresh-id')
+
+    host.disconnect()
+    vi.useRealTimers()
+  })
+
+  it('preserves the same localPlayerId across retryConnect() calls', async () => {
+    vi.useFakeTimers()
+    const host = new PeerJSTransport({
+      role: 'host',
+      localPlayerId: 'p2pgames-bingo-K7M4QX',
+    })
+
+    const connectPromise = host.connect()
+    await vi.advanceTimersByTimeAsync(10)
+    const initialId = await connectPromise
+    expect(initialId).toBe('p2pgames-bingo-K7M4QX')
+
+    const retryPromise = host.retryConnect()
+    await vi.advanceTimersByTimeAsync(10)
+    const retriedId = await retryPromise
+
+    expect(retriedId).toBe('p2pgames-bingo-K7M4QX')
+    expect(host.localPlayerId).toBe('p2pgames-bingo-K7M4QX')
+
+    host.disconnect()
+    vi.useRealTimers()
+  })
+
+  it('emits onSignalingChange when signaling drops and reconnects', async () => {
+    const { host, peer } = await openHost()
+    const signalingStates: boolean[] = []
+    host.onSignalingChange((isReconnecting) => signalingStates.push(isReconnecting))
+
+    peer.dropSignaling()
+    expect(signalingStates).toEqual([true])
+
+    await vi.advanceTimersByTimeAsync(1000 + 5)
+    expect(signalingStates).toEqual([true, false])
+
+    host.disconnect()
+  })
+
+  it('reconnects when window online event fires', async () => {
+    const { host, peer } = await openHost()
+    peer.dropSignaling()
+    expect(peer.disconnected).toBe(true)
+
+    window.dispatchEvent(new Event('online'))
+    expect(peer.reconnect).toHaveBeenCalled()
+
+    host.disconnect()
+  })
 })
 
 describe('PeerJSTransport connection ownership', () => {
@@ -374,10 +449,6 @@ describe('PeerJSTransport connection ownership', () => {
   })
 
   it('does not register an orphaned peer when disconnected mid-connect', async () => {
-    // React StrictMode (and any fast unmount/remount) tears the transport down
-    // while connect() is still awaiting the peerjs dynamic import. Previously
-    // the Peer was created afterwards and stayed registered on the signaling
-    // server, then dialled the host and hijacked the real connection.
     const transport = new PeerJSTransport({ role: 'guest', targetPeerId: 'host-xyz' })
 
     const connectPromise = transport.connect()
@@ -385,7 +456,6 @@ describe('PeerJSTransport connection ownership', () => {
 
     await expect(connectPromise).rejects.toThrow(/already been disconnected/)
 
-    // Let any pending peer creation settle, then assert none happened.
     await new Promise((r) => setTimeout(r, 30))
     expect((transport as any).peerInstance).toBeNull()
     expect(transport.status).toBe('closed')
@@ -403,7 +473,6 @@ describe('PeerJSTransport connection ownership', () => {
 
     expect(host.remotePlayerId).toBe('guest-2')
 
-    // The retired connection closes after the replacement is already live.
     conn1.emit('close')
 
     expect(host.status).toBe('connected')

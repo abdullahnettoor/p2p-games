@@ -1,12 +1,12 @@
 import { PlayerRole } from '@/core/games/types'
 import {
+  ErrorEventHandler,
   ITransport,
+  PlayerEventHandler,
+  StatusChangeHandler,
+  TransportEventHandler,
   TransportMessage,
   TransportStatus,
-  TransportEventHandler,
-  StatusChangeHandler,
-  PlayerEventHandler,
-  ErrorEventHandler,
 } from './types'
 
 export interface PeerJSTransportOptions {
@@ -16,6 +16,7 @@ export interface PeerJSTransportOptions {
   iceServers?: RTCIceServer[]
   heartbeatIntervalMs?: number
   heartbeatTimeoutMs?: number
+  onIdCollision?: () => string
 }
 
 const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
@@ -103,6 +104,7 @@ export class PeerJSTransport implements ITransport {
   private iceServers: RTCIceServer[]
   private heartbeatIntervalMs: number
   private heartbeatTimeoutMs: number
+  private onIdCollision?: () => string
 
   private peerInstance: any = null
   private connection: any = null
@@ -123,6 +125,7 @@ export class PeerJSTransport implements ITransport {
   private playerJoinHandlers = new Set<PlayerEventHandler>()
   private playerLeaveHandlers = new Set<PlayerEventHandler>()
   private errorHandlers = new Set<ErrorEventHandler>()
+  private signalingChangeHandlers = new Set<(isReconnecting: boolean) => void>()
 
   constructor(options: PeerJSTransportOptions) {
     this.role = options.role
@@ -131,6 +134,7 @@ export class PeerJSTransport implements ITransport {
     this.iceServers = options.iceServers ?? DEFAULT_ICE_SERVERS
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 5000
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 15000
+    this.onIdCollision = options.onIdCollision
   }
 
   public async connect(): Promise<string> {
@@ -149,6 +153,10 @@ export class PeerJSTransport implements ITransport {
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange)
       document.addEventListener('visibilitychange', this.handleVisibilityChange)
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline)
+      window.addEventListener('online', this.handleOnline)
     }
 
     const { Peer } = await import('peerjs')
@@ -178,133 +186,158 @@ export class PeerJSTransport implements ITransport {
       // later signaling errors are drops to recover from, not setup failures.
       let hasOpened = false
 
-      try {
-        const peer = this.localPlayerId
-          ? new Peer(this.localPlayerId, {
-              config: { iceServers: this.iceServers },
-            })
-          : new Peer({
-              config: { iceServers: this.iceServers },
-            })
+      const initPeer = () => {
+        try {
+          const peer = this.localPlayerId
+            ? new Peer(this.localPlayerId, {
+                config: { iceServers: this.iceServers },
+              })
+            : new Peer({
+                config: { iceServers: this.iceServers },
+              })
 
-        this.peerInstance = peer
+          this.peerInstance = peer
 
-        peer.on('open', (assignedId: string) => {
-          cleanupSignalingTimeout()
-          this.stopSignalingRetry()
-          this.signalingRetryAttempt = 0
+          peer.on('open', (assignedId: string) => {
+            cleanupSignalingTimeout()
+            this.stopSignalingRetry()
+            this.signalingRetryAttempt = 0
+            this.notifySignalingChange(false)
 
-          // Torn down while the signaling handshake was in flight.
-          if (this.isDestroyed) {
-            try {
-              peer.destroy()
-            } catch {
-              // ignore
-            }
-            this.peerInstance = null
-            if (!isResolved) {
-              isResolved = true
-              reject(new Error('Cannot connect: transport has already been disconnected'))
-            }
-            return
-          }
-
-          const isReconnect = hasOpened
-          hasOpened = true
-          this.localPlayerId = assignedId
-
-          // A signaling reconnect must not redial a host the guest already has.
-          if (this.role === 'guest' && !isReconnect) {
-            if (!this.targetPeerId) {
-              const err = new Error('Guest transport requires a targetPeerId')
-              this.notifyError(err)
+            // Torn down while the signaling handshake was in flight.
+            if (this.isDestroyed) {
+              try {
+                peer.destroy()
+              } catch {
+                // ignore
+              }
+              this.peerInstance = null
               if (!isResolved) {
                 isResolved = true
-                reject(err)
+                reject(new Error('Cannot connect: transport has already been disconnected'))
               }
               return
             }
-            this.startConnectionTimeout()
-            const conn = peer.connect(this.targetPeerId)
-            this.setupConnection(conn)
-          }
 
-          if (!isResolved) {
-            isResolved = true
-            resolve(assignedId)
-          }
-        })
+            const isReconnect = hasOpened
+            hasOpened = true
+            this.localPlayerId = assignedId
 
-        peer.on('connection', (conn: any) => {
-          if (this.role !== 'host' || this.isDestroyed) return
-
-          // Adopt the newcomer first, then retire the old connection. Closing
-          // first would fire the old connection's `close` handler while it is
-          // still the current one, tearing down state we are about to reuse.
-          const previous = this.connection
-          this.setupConnection(conn)
-
-          if (previous && previous !== conn) {
-            try {
-              previous.close()
-            } catch {
-              // ignore
+            // A signaling reconnect must not redial a host the guest already has.
+            if (this.role === 'guest' && !isReconnect) {
+              if (!this.targetPeerId) {
+                const err = new Error('Guest transport requires a targetPeerId')
+                this.notifyError(err)
+                if (!isResolved) {
+                  isResolved = true
+                  reject(err)
+                }
+                return
+              }
+              this.startConnectionTimeout()
+              const conn = peer.connect(this.targetPeerId)
+              this.setupConnection(conn)
             }
-          }
-        })
 
-        peer.on('error', (err: any) => {
-          if (this.peerInstance !== peer) return
+            if (!isResolved) {
+              isResolved = true
+              resolve(assignedId)
+            }
+          })
 
-          // Recoverable signaling drop: the 'disconnected' handler retries and
-          // reports only if every retry fails. Live DataChannels are unaffected.
-          if (hasOpened && TRANSIENT_SIGNALING_ERRORS.has(err?.type)) return
+          peer.on('connection', (conn: any) => {
+            if (this.role !== 'host' || this.isDestroyed) return
 
+            // Adopt the newcomer first, then retire the old connection. Closing
+            // first would fire the old connection's `close` handler while it is
+            // still the current one, tearing down state we are about to reuse.
+            const previous = this.connection
+            this.setupConnection(conn)
+
+            if (previous && previous !== conn) {
+              try {
+                previous.close()
+              } catch {
+                // ignore
+              }
+            }
+          })
+
+          peer.on('error', (err: any) => {
+            if (this.peerInstance !== peer) return
+
+            // Recoverable signaling drop: the 'disconnected' handler retries and
+            // reports only if every retry fails. Live DataChannels are unaffected.
+            if (hasOpened && TRANSIENT_SIGNALING_ERRORS.has(err?.type)) return
+
+            // Host collision on open: regenerate ID if collision handler is provided
+            if (
+              !hasOpened &&
+              err?.type === 'unavailable-id' &&
+              this.role === 'host' &&
+              this.onIdCollision
+            ) {
+              const collidingPeer = peer
+              this.peerInstance = null
+              try {
+                collidingPeer.destroy()
+              } catch {
+                // ignore
+              }
+              this.localPlayerId = this.onIdCollision()
+              initPeer()
+              return
+            }
+
+            cleanupSignalingTimeout()
+            this.stopConnectionTimeout()
+
+            const rawMessage = err instanceof Error ? err.message : String(err)
+            const error = new Error(
+              isPeerUnavailable(err, rawMessage) ? PEER_UNAVAILABLE_MESSAGE : rawMessage
+            )
+
+            // During an active match, P2P communication is direct over the WebRTC
+            // DataChannel; transient broker errors must never disrupt the match.
+            if (
+              this.status === 'connected' &&
+              this.connection &&
+              !isPeerUnavailable(err, rawMessage)
+            ) {
+              return
+            }
+
+            this.notifyError(error)
+            if (!isResolved && this.status === 'connecting') {
+              isResolved = true
+              reject(error)
+            }
+          })
+
+          // Fires on any signaling drop, including a failed reconnect attempt.
+          // Status is left alone: a live match runs over the direct DataChannel,
+          // and in the lobby we keep the same peer ID so the invite stays valid.
+          peer.on('disconnected', () => {
+            if (this.isDestroyed || this.peerInstance !== peer || peer.destroyed) return
+            if (!hasOpened) return
+            this.notifySignalingChange(true)
+            this.scheduleSignalingRetry(peer)
+          })
+
+          peer.on('close', () => {
+            if (this.peerInstance !== peer) return
+            cleanupSignalingTimeout()
+            this.disconnect()
+          })
+        } catch (err) {
           cleanupSignalingTimeout()
-          this.stopConnectionTimeout()
-
-          const rawMessage = err instanceof Error ? err.message : String(err)
-          const error = new Error(
-            isPeerUnavailable(err, rawMessage) ? PEER_UNAVAILABLE_MESSAGE : rawMessage
-          )
-
-          // During an active match, P2P communication is direct over the WebRTC
-          // DataChannel; transient broker errors must never disrupt the match.
-          if (
-            this.status === 'connected' &&
-            this.connection &&
-            !isPeerUnavailable(err, rawMessage)
-          ) {
-            return
-          }
-
+          const error = err instanceof Error ? err : new Error(String(err))
           this.notifyError(error)
-          if (!isResolved && this.status === 'connecting') {
-            isResolved = true
-            reject(error)
-          }
-        })
-
-        // Fires on any signaling drop, including a failed reconnect attempt.
-        // Status is left alone: a live match runs over the direct DataChannel,
-        // and in the lobby we keep the same peer ID so the invite stays valid.
-        peer.on('disconnected', () => {
-          if (this.isDestroyed || this.peerInstance !== peer || peer.destroyed) return
-          if (!hasOpened) return
-          this.scheduleSignalingRetry(peer)
-        })
-
-        peer.on('close', () => {
-          if (this.peerInstance !== peer) return
-          cleanupSignalingTimeout()
-          this.disconnect()
-        })
-      } catch (err) {
-        cleanupSignalingTimeout()
-        const error = err instanceof Error ? err : new Error(String(err))
-        this.notifyError(error)
-        reject(error)
+          reject(error)
+        }
       }
+
+      initPeer()
     })
   }
 
@@ -317,6 +350,7 @@ export class PeerJSTransport implements ITransport {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
         return
       }
+      this.notifySignalingChange(false)
       if (this.status !== 'connected' || !this.connection) {
         this.notifyError(new Error(SIGNALING_LOST_MESSAGE))
       }
@@ -348,10 +382,26 @@ export class PeerJSTransport implements ITransport {
   private handleVisibilityChange = (): void => {
     if (typeof document === 'undefined') return
     if (document.visibilityState === 'visible') {
-      const peer = this.peerInstance
-      if (peer && peer.disconnected && !peer.destroyed && !this.isDestroyed) {
+      this.recoverSignalingIfDisconnected()
+    }
+  }
+
+  private handleOnline = (): void => {
+    this.recoverSignalingIfDisconnected()
+  }
+
+  private recoverSignalingIfDisconnected(): void {
+    if (typeof document === 'undefined') return
+    if (this.isDestroyed || this.status === 'closed') return
+
+    const peer = this.peerInstance
+    if (peer) {
+      if (peer.destroyed) {
+        this.retryConnect().catch(() => {})
+      } else if (peer.disconnected) {
         this.signalingRetryAttempt = 0
         this.stopSignalingRetry()
+        this.notifySignalingChange(true)
         try {
           peer.reconnect()
         } catch {
@@ -370,20 +420,19 @@ export class PeerJSTransport implements ITransport {
 
     const handleOpen = () => {
       if (this.connection !== conn) return
+
       this.stopConnectionTimeout()
       this.remotePlayerId = conn.peer
       this.setStatus('connected')
-      this.notifyPlayerJoin(conn.peer)
+      this.lastMessageTimestamp = Date.now()
       this.startHeartbeat()
+      this.notifyPlayerJoin(conn.peer)
       onOpenCallback?.()
     }
 
     if (conn.open) {
       handleOpen()
     } else {
-      // Covers the host too: an incoming connection whose ICE never completes
-      // would otherwise leave the lobby waiting forever with no explanation.
-      this.startConnectionTimeout()
       conn.on('open', handleOpen)
     }
 
@@ -438,6 +487,54 @@ export class PeerJSTransport implements ITransport {
     }
   }
 
+  private startHeartbeat(): void {
+    this.stopHeartbeat()
+    this.heartbeatTimer = setInterval(() => {
+      if (this.status !== 'connected' || !this.connection) {
+        this.stopHeartbeat()
+        return
+      }
+
+      try {
+        this.connection.send({
+          type: 'heartbeat',
+          payload: { timestamp: Date.now() },
+        })
+      } catch {
+        // Safe to ignore heartbeat send errors
+      }
+
+      const elapsed = Date.now() - this.lastMessageTimestamp
+      if (this.lastMessageTimestamp > 0 && elapsed > this.heartbeatTimeoutMs) {
+        this.stopHeartbeat()
+        this.handleConnectionDrop()
+      }
+    }, this.heartbeatIntervalMs)
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+  }
+
+  private startConnectionTimeout(): void {
+    this.stopConnectionTimeout()
+    this.connectionTimeoutTimer = setTimeout(() => {
+      if (this.status === 'connecting') {
+        this.notifyError(new Error(ICE_FAILURE_MESSAGE))
+      }
+    }, 20000)
+  }
+
+  private stopConnectionTimeout(): void {
+    if (this.connectionTimeoutTimer) {
+      clearTimeout(this.connectionTimeoutTimer)
+      this.connectionTimeoutTimer = null
+    }
+  }
+
   public onMessage(handler: TransportEventHandler): () => void {
     this.messageHandlers.add(handler)
     return () => this.messageHandlers.delete(handler)
@@ -463,13 +560,26 @@ export class PeerJSTransport implements ITransport {
     return () => this.errorHandlers.delete(handler)
   }
 
+  public onSignalingChange(handler: (isReconnecting: boolean) => void): () => void {
+    this.signalingChangeHandlers.add(handler)
+    return () => this.signalingChangeHandlers.delete(handler)
+  }
+
+  private notifySignalingChange(isReconnecting: boolean): void {
+    this.signalingChangeHandlers.forEach((handler) => handler(isReconnecting))
+  }
+
   public async retryConnect(): Promise<string> {
     this.stopHeartbeat()
     this.stopConnectionTimeout()
     this.stopSignalingRetry()
     this.signalingRetryAttempt = 0
+    this.notifySignalingChange(false)
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline)
     }
     const previousPeer = this.peerInstance
     const previousConnection = this.connection
@@ -498,13 +608,16 @@ export class PeerJSTransport implements ITransport {
     this.stopHeartbeat()
     this.stopConnectionTimeout()
     this.stopSignalingRetry()
+    this.notifySignalingChange(false)
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline)
     }
 
     const prevRemote = this.remotePlayerId
     this.setStatus('closed')
-    this.remotePlayerId = null
 
     if (this.connection) {
       try {
@@ -524,75 +637,40 @@ export class PeerJSTransport implements ITransport {
       this.peerInstance = null
     }
 
+    this.remotePlayerId = null
+
     if (prevRemote) {
       this.notifyPlayerLeave(prevRemote)
     }
+
+    this.messageHandlers.clear()
+    this.statusHandlers.clear()
+    this.playerJoinHandlers.clear()
+    this.playerLeaveHandlers.clear()
+    this.errorHandlers.clear()
+    this.signalingChangeHandlers.clear()
   }
 
-  private startConnectionTimeout(): void {
-    this.stopConnectionTimeout()
-    this.connectionTimeoutTimer = setTimeout(() => {
-      if (this.status !== 'connected') {
-        this.notifyError(new Error(ICE_FAILURE_MESSAGE))
-      }
-    }, 20000)
-  }
-
-  private stopConnectionTimeout(): void {
-    if (this.connectionTimeoutTimer) {
-      clearTimeout(this.connectionTimeoutTimer)
-      this.connectionTimeoutTimer = null
+  private setStatus(status: TransportStatus): void {
+    if (this.status !== status) {
+      this.status = status
+      this.statusHandlers.forEach((handler) => handler(status))
     }
-  }
-
-  private startHeartbeat(): void {
-    this.stopHeartbeat()
-    this.lastMessageTimestamp = Date.now()
-
-    this.heartbeatTimer = setInterval(() => {
-      if (this.status === 'connected' && this.connection) {
-        try {
-          this.connection.send({
-            type: 'heartbeat',
-            payload: { timestamp: Date.now() },
-          })
-        } catch {
-          // handled by conn
-        }
-
-        if (Date.now() - this.lastMessageTimestamp > this.heartbeatTimeoutMs) {
-          this.setStatus('reconnecting')
-        }
-      }
-    }, this.heartbeatIntervalMs)
-  }
-
-  private stopHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer)
-      this.heartbeatTimer = null
-    }
-  }
-
-  private setStatus(newStatus: TransportStatus): void {
-    if (this.status === newStatus) return
-    this.status = newStatus
-    this.statusHandlers.forEach((h) => h(newStatus))
   }
 
   private notifyMessage(message: TransportMessage): void {
-    this.messageHandlers.forEach((h) => h(message))
+    this.messageHandlers.forEach((handler) => handler(message))
   }
 
   private notifyPlayerJoin(playerId: string): void {
-    this.playerJoinHandlers.forEach((h) => h(playerId))
+    this.playerJoinHandlers.forEach((handler) => handler(playerId))
   }
 
   private notifyPlayerLeave(playerId: string): void {
-    this.playerLeaveHandlers.forEach((h) => h(playerId))
+    this.playerLeaveHandlers.forEach((handler) => handler(playerId))
   }
 
   private notifyError(error: Error): void {
-    this.errorHandlers.forEach((h) => h(error))
+    this.errorHandlers.forEach((handler) => handler(error))
   }
 }

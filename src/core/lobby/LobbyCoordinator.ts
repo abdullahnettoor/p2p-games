@@ -1,5 +1,6 @@
 import { ITransport, TransportMessage } from '@/core/transport/types'
 import { LobbyPlayer, LobbyState, LobbyStatus, MatchStartEvent } from './types'
+import { extractRoomCode } from './roomCode'
 
 export const PLAYER_NAME_STORAGE_KEY = 'games:player:name'
 
@@ -24,6 +25,7 @@ function persistPlayerName(name: string): void {
 export interface LobbyCoordinatorOptions<TSetupConfig = unknown> {
   transport: ITransport
   playerName?: string
+  roomCode?: string
   inviteUrlGenerator?: (matchId: string) => string
   validateSetup?: (config: TSetupConfig) => boolean
   onMatchStart?: (event: MatchStartEvent<TSetupConfig>) => void
@@ -60,6 +62,8 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       },
       remotePlayer: null,
       inviteUrl: null,
+      roomCode: options.roomCode ?? extractRoomCode(this.transport.localPlayerId),
+      isReconnecting: false,
       error: null,
     }
 
@@ -84,20 +88,35 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       this.state = {
         ...this.state,
         status: 'error',
+        isReconnecting: false,
         error: err.message,
       }
       this.notify()
     })
 
+    const unsubSignaling = (this.transport as any).onSignalingChange?.((isReconnecting: boolean) => {
+      if (this.state.status !== 'error') {
+        this.state = {
+          ...this.state,
+          isReconnecting,
+        }
+        this.notify()
+      }
+    })
+
     this.unsubscribers.push(unsubMsg, unsubPlayerJoin, unsubPlayerLeave, unsubStatus, unsubError)
+    if (unsubSignaling) {
+      this.unsubscribers.push(unsubSignaling)
+    }
   }
 
   public async start(): Promise<void> {
     try {
-      this.state = { ...this.state, status: 'connecting' }
+      this.state = { ...this.state, status: 'connecting', isReconnecting: false }
       this.notify()
 
       const peerId = await this.transport.connect()
+      const derivedRoomCode = extractRoomCode(peerId)
 
       const inviteUrl =
         this.transport.role === 'host'
@@ -119,6 +138,8 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
         ...this.state,
         status: newStatus,
         inviteUrl,
+        roomCode: derivedRoomCode ?? this.state.roomCode,
+        isReconnecting: false,
         localPlayer: {
           ...this.state.localPlayer,
           id: peerId,
@@ -135,6 +156,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       this.state = {
         ...this.state,
         status: 'error',
+        isReconnecting: false,
         error: err instanceof Error ? err.message : String(err),
       }
       this.notify()
@@ -146,6 +168,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     this.state = {
       ...this.state,
       status: 'connecting',
+      isReconnecting: false,
       error: null,
     }
     this.notify()

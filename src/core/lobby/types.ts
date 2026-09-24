@@ -23,6 +23,8 @@ export interface LobbyState<TSetupConfig = unknown> {
   localPlayer: LobbyPlayer<TSetupConfig>
   remotePlayer: LobbyPlayer<TSetupConfig> | null
   inviteUrl: string | null
+  roomCode?: string | null
+  isReconnecting?: boolean
   error: string | null
 }
 

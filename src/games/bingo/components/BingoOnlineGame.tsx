@@ -3,6 +3,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { PeerJSTransport } from '@/core/transport/PeerJSTransport'
 import { LobbyCoordinator } from '@/core/lobby/LobbyCoordinator'
+import {
+  generateRoomCode,
+  formatHostPeerId,
+  resolveTargetPeerId,
+  createGameInviteUrl,
+} from '@/core/lobby/roomCode'
 import { BingoBoard } from '../types'
 import { validateBingoBoard } from '../engine'
 import { BingoMatchLobby } from './BingoMatchLobby'
@@ -22,12 +28,27 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({ role, matchId,
   const matchCoordinatorRef = useRef<BingoMatchCoordinator | null>(null)
   const activeRef = useRef(true)
   const [matchCoordinator, setMatchCoordinator] = useState<BingoMatchCoordinator | null>(null)
+
   const [lobbyCoordinator] = useState<LobbyCoordinator<BingoBoard>>(() => {
-    const transport = new PeerJSTransport({ role, targetPeerId: matchId })
+    const isHost = role === 'host'
+    const initialCode = isHost ? generateRoomCode() : undefined
+    const hostPeerId = isHost && initialCode ? formatHostPeerId('bingo', initialCode) : undefined
+    const resolvedTargetId = !isHost ? resolveTargetPeerId('bingo', matchId) : undefined
+
+    const transport = new PeerJSTransport({
+      role,
+      localPlayerId: hostPeerId,
+      targetPeerId: resolvedTargetId,
+      onIdCollision: () => {
+        const newCode = generateRoomCode()
+        return formatHostPeerId('bingo', newCode)
+      },
+    })
     transportRef.current = transport
 
     const lobby = new LobbyCoordinator<BingoBoard>({
       transport,
+      roomCode: initialCode,
       validateSetup: (board) => validateBingoBoard(board).valid,
       onMatchStart: (event) => {
         if (!activeRef.current) return
@@ -54,7 +75,7 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({ role, matchId,
       },
       inviteUrlGenerator: (id) => {
         const origin = typeof window !== 'undefined' ? window.location.origin : ''
-        return `${origin}/bingo?match=${id}`
+        return createGameInviteUrl(origin, 'bingo', id)
       },
     })
 
