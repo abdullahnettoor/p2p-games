@@ -55,12 +55,22 @@ export type TransportMessage =
   | { type: 'sync'; payload: SyncMessagePayload }
   | { type: 'forfeit'; payload: { playerId: string } }
   | { type: 'forfeit_ack'; payload: { playerId: string } }
+  | { type: 'reject'; payload: { reason: string } }
 
 export type TransportEventHandler<T = TransportMessage> = (message: T) => void
 export type StatusChangeHandler = (status: TransportStatus) => void
 export type PlayerEventHandler = (playerId: string) => void
 export type ErrorEventHandler = (error: Error) => void
 export type SignalingChangeHandler = (isReconnecting: boolean) => void
+
+export const HOST_REJECTED_MESSAGE = 'Connection rejected: host is full'
+
+export class HostRejectedError extends Error {
+  constructor(message: string = HOST_REJECTED_MESSAGE) {
+    super(message)
+    this.name = 'HostRejectedError'
+  }
+}
 
 export interface ITransport<TMessage = TransportMessage> {
   readonly status: TransportStatus
@@ -76,5 +86,6 @@ export interface ITransport<TMessage = TransportMessage> {
   onPlayerLeave(handler: PlayerEventHandler): () => void
   onError(handler: ErrorEventHandler): () => void
   onSignalingChange?: (handler: SignalingChangeHandler) => () => void
+  releaseSignaling?: () => void
   disconnect(): void
 }

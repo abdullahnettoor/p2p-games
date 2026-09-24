@@ -7,6 +7,8 @@ import {
   SignalingChangeHandler,
   TransportMessage,
   TransportStatus,
+  HostRejectedError,
+  HOST_REJECTED_MESSAGE,
 } from './types'
 import { PlayerRole } from '../games/types'
 
@@ -18,6 +20,7 @@ export interface PeerJSTransportOptions {
   heartbeatIntervalMs?: number
   heartbeatTimeoutMs?: number
   onIdCollision?: () => string
+  rejectExtraConnections?: boolean
 }
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
@@ -53,11 +56,12 @@ const TRANSIENT_SIGNALING_ERRORS = new Set([
   'unavailable-id',
 ])
 
-function isPeerUnavailable(err: any, message: string): boolean {
+export function isPeerUnavailable(err: any, message: string): boolean {
   return (
     err?.type === 'peer-unavailable' ||
     message.includes('Could not connect to peer') ||
-    message.includes('peer-unavailable')
+    message.includes('peer-unavailable') ||
+    message.includes('The match invite is no longer available')
   )
 }
 
@@ -72,6 +76,8 @@ export class PeerJSTransport implements ITransport {
   private heartbeatIntervalMs: number
   private heartbeatTimeoutMs: number
   private onIdCollision?: () => string
+  private rejectExtraConnections: boolean
+  private isSignalingReleased = false
 
   private peerInstance: any = null
   private connection: any = null
@@ -97,6 +103,7 @@ export class PeerJSTransport implements ITransport {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? DEFAULT_HEARTBEAT_TIMEOUT_MS
     this.onIdCollision = options.onIdCollision
+    this.rejectExtraConnections = options.rejectExtraConnections ?? false
   }
 
   public async connect(): Promise<string> {
@@ -153,12 +160,11 @@ export class PeerJSTransport implements ITransport {
             : new Peer({
                 config: { iceServers: this.iceServers },
               })
-
           this.peerInstance = peer
 
           peer.on('open', (assignedId: string) => {
             cleanupSignalingTimeout()
-            this.stopSignalingRetry()
+            const isReconnect = hasOpened
             this.signalingRetryAttempt = 0
             this.notifySignalingChange(false)
 
@@ -171,12 +177,11 @@ export class PeerJSTransport implements ITransport {
               this.peerInstance = null
               if (!isResolved) {
                 isResolved = true
-                reject(new Error('Cannot connect: transport has already been disconnected'))
+                reject(new Error('Cannot connect: transport was disconnected'))
               }
               return
             }
 
-            const isReconnect = hasOpened
             hasOpened = true
             this.localPlayerId = assignedId
 
@@ -218,28 +223,49 @@ export class PeerJSTransport implements ITransport {
           peer.on('connection', (conn: any) => {
             if (this.peerInstance !== peer) return
             if (this.role === 'host') {
+              if (
+                this.rejectExtraConnections &&
+                (this.connection !== null || this.status === 'connected')
+              ) {
+                const sendReject = () => {
+                  try {
+                    conn.send({ type: 'reject', payload: { reason: 'full' } })
+                  } catch {
+                    // Safe ignore
+                  }
+                  try {
+                    conn.close()
+                  } catch {
+                    // Safe ignore
+                  }
+                }
+                if (conn.open) {
+                  sendReject()
+                } else {
+                  conn.on('open', sendReject)
+                  setTimeout(() => {
+                    try {
+                      conn.close()
+                    } catch {
+                      // Safe ignore
+                    }
+                  }, 1000)
+                }
+                return
+              }
               this.setupConnection(conn)
             }
           })
 
           peer.on('error', (err: any) => {
-            if (this.peerInstance !== peer) return
+            if (this.isDestroyed || this.peerInstance !== peer) return
 
-            // Recoverable signaling drop: the 'disconnected' handler retries and
-            // reports only if every retry fails. Live DataChannels are unaffected.
-            if (hasOpened && TRANSIENT_SIGNALING_ERRORS.has(err?.type)) return
+            if (err?.type === 'unavailable-id' && this.onIdCollision && this.role === 'host') {
+              cleanupSignalingTimeout()
+              this.stopConnectionTimeout()
 
-            // Host collision on open: regenerate ID if collision handler is provided
-            if (
-              !hasOpened &&
-              err?.type === 'unavailable-id' &&
-              this.role === 'host' &&
-              this.onIdCollision
-            ) {
-              const collidingPeer = peer
-              this.peerInstance = null
               try {
-                collidingPeer.destroy()
+                peer.destroy()
               } catch {
                 // ignore
               }
@@ -268,6 +294,10 @@ export class PeerJSTransport implements ITransport {
               return
             }
 
+            // Recoverable signaling drop: the 'disconnected' handler retries and
+            // reports only if every retry fails. Live DataChannels are unaffected.
+            if (hasOpened && TRANSIENT_SIGNALING_ERRORS.has(err?.type)) return
+
             cleanupSignalingTimeout()
             this.stopConnectionTimeout()
 
@@ -295,7 +325,9 @@ export class PeerJSTransport implements ITransport {
 
           peer.on('disconnected', () => {
             if (this.isDestroyed || this.peerInstance !== peer || peer.destroyed) return
+            if (this.isSignalingReleased) return
             if (!hasOpened) return
+
             this.notifySignalingChange(true)
             this.scheduleSignalingRetry(peer)
           })
@@ -333,12 +365,10 @@ export class PeerJSTransport implements ITransport {
     }
 
     const delay = SIGNALING_RETRY_DELAYS_MS[this.signalingRetryAttempt]
-    this.signalingRetryAttempt += 1
+    this.signalingRetryAttempt++
 
     this.signalingRetryTimer = setTimeout(() => {
-      this.signalingRetryTimer = null
       if (this.isDestroyed || this.peerInstance !== peer || peer.destroyed) return
-      if (!peer.disconnected) return
       try {
         peer.reconnect()
       } catch {
@@ -356,6 +386,7 @@ export class PeerJSTransport implements ITransport {
 
   private handleVisibilityChange = (): void => {
     if (typeof document === 'undefined') return
+    if (this.isSignalingReleased) return
     if (document.visibilityState === 'visible') {
       const peer = this.peerInstance
       if (peer && peer.disconnected && !peer.destroyed && !this.isDestroyed) {
@@ -372,6 +403,7 @@ export class PeerJSTransport implements ITransport {
   }
 
   private handleOnline = (): void => {
+    if (this.isSignalingReleased) return
     const peer = this.peerInstance
     if (peer && peer.disconnected && !peer.destroyed && !this.isDestroyed) {
       this.signalingRetryAttempt = 0
@@ -398,6 +430,7 @@ export class PeerJSTransport implements ITransport {
       }
     }
     this.connection = conn
+    let isRejected = false
 
     const handleOpen = () => {
       if (this.connection !== conn) return
@@ -420,6 +453,19 @@ export class PeerJSTransport implements ITransport {
       if (this.connection !== conn) return
       this.lastMessageTimestamp = Date.now()
 
+      if (data?.type === 'reject') {
+        isRejected = true
+        const reason = data.payload?.reason || HOST_REJECTED_MESSAGE
+        this.stopConnectionTimeout()
+        this.notifyError(new HostRejectedError(reason))
+        try {
+          conn.close()
+        } catch {
+          // Safe ignore
+        }
+        return
+      }
+
       if (data?.type === 'heartbeat') return
 
       this.notifyMessage(data as TransportMessage)
@@ -427,6 +473,14 @@ export class PeerJSTransport implements ITransport {
 
     conn.on('close', () => {
       if (this.connection !== conn) return
+      if (this.status !== 'connected') {
+        this.stopConnectionTimeout()
+        this.connection = null
+        if (!isRejected) {
+          this.notifyError(new HostRejectedError('Connection closed before opening'))
+        }
+        return
+      }
       this.handleConnectionDrop()
     })
 
@@ -509,11 +563,24 @@ export class PeerJSTransport implements ITransport {
     }
   }
 
+  public releaseSignaling(): void {
+    this.isSignalingReleased = true
+    this.stopSignalingRetry()
+    if (this.peerInstance && !this.peerInstance.disconnected) {
+      try {
+        this.peerInstance.disconnect()
+      } catch {
+        // Safe ignore
+      }
+    }
+  }
+
   public async retryConnect(): Promise<string> {
     this.stopHeartbeat()
     this.stopConnectionTimeout()
     this.stopSignalingRetry()
     this.signalingRetryAttempt = 0
+    this.isSignalingReleased = false
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange)
     }
@@ -580,6 +647,7 @@ export class PeerJSTransport implements ITransport {
     if (this.status === 'closed') return
 
     this.isDestroyed = true
+    this.isSignalingReleased = false
     this.stopHeartbeat()
     this.stopConnectionTimeout()
     this.stopSignalingRetry()

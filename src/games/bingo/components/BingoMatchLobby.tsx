@@ -22,6 +22,7 @@ import {
   Pencil,
   RotateCcw,
   Share2,
+  Users,
   X,
 } from 'lucide-react'
 import styles from './BingoMatchLobby.module.css'
@@ -30,6 +31,8 @@ export interface BingoMatchLobbyProps {
   session: LobbySession<BingoBoard>
   onExit?: () => void
   onJoinRoomCode?: (code: string) => void
+  onPlayStranger?: () => void
+  isStrangerMatch?: boolean
   className?: string
 }
 
@@ -39,6 +42,8 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   session,
   onExit,
   onJoinRoomCode,
+  onPlayStranger,
+  isStrangerMatch = false,
   className,
 }) => {
   const { state, updatePlayerName, updateBoardSetup, setReady } = useLobby(session)
@@ -59,6 +64,10 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   const isRemoteConnected = Boolean(state.remotePlayer?.connected)
   const isRemoteReady = Boolean(state.remotePlayer?.isReady)
   const isStarting = state.status === 'starting'
+
+  useEffect(() => {
+    setLocalNameInput(state.localPlayer.name)
+  }, [state.localPlayer.name])
 
   const copyInvite = async (inviteUrl: string) => {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard is unavailable')
@@ -156,11 +165,17 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
 
   const connectionCopy = state.error && !isHost
     ? `Connection failed · ${state.error}`
-    : !isRemoteConnected
-      ? state.localPlayer.role === 'host' ? 'Waiting for a friend to join' : 'Connecting to the Host'
-      : isRemoteReady
-        ? 'Connected · both Players are arranging'
-        : 'Connected · your friend is arranging'
+    : isStrangerMatch
+      ? !isRemoteConnected
+        ? 'Matching with a stranger…'
+        : isRemoteReady
+          ? 'Connected with a stranger · both players are arranging'
+          : 'Connected with a stranger · opponent is arranging'
+      : !isRemoteConnected
+        ? state.localPlayer.role === 'host' ? 'Waiting for a friend to join' : 'Connecting to the Host'
+        : isRemoteReady
+          ? 'Connected · both Players are arranging'
+          : 'Connected · your friend is arranging'
 
   return (
     <div className={cn('bingoTokenScope', styles.lobbySurface, className)}>
@@ -188,7 +203,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
           </div>
         </header>
 
-        {isHost ? (
+        {isHost && !isStrangerMatch ? (
           <section className={styles.inviteArea} aria-label="Match invite">
             <div
               data-ready={state.inviteUrl && !state.isReconnecting ? 'true' : 'false'}
@@ -257,7 +272,20 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
           </section>
         ) : null}
 
-        {!isHost && !isRemoteConnected ? (
+        {!isRemoteConnected && !isStrangerMatch && onPlayStranger ? (
+          <div className={styles.strangerSection}>
+            <button
+              type="button"
+              onClick={onPlayStranger}
+              className={styles.strangerButton}
+            >
+              <Users className="h-4 w-4" aria-hidden="true" />
+              <span>Play with a stranger</span>
+            </button>
+          </div>
+        ) : null}
+
+        {!isHost && !isRemoteConnected && !isStrangerMatch ? (
           <div className={styles.joinCodeSection}>
             {!showJoinInput ? (
               <button
@@ -308,13 +336,15 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
         <section className={styles.boardSheet} aria-label="Bingo Lobby and Board setup">
           <div className={styles.identityRow}>
             <div>
-              <label htmlFor="display-name" className={styles.identityLabel}>Your name</label>
+              <label htmlFor="display-name" className={styles.identityLabel}>
+                Your name {isStrangerMatch ? '(stranger match)' : ''}
+              </label>
               <input
                 id="display-name"
                 type="text"
                 maxLength={20}
                 value={localNameInput}
-                disabled={isLocalReady}
+                disabled={isLocalReady || isStrangerMatch}
                 onChange={(event) => {
                   setLocalNameInput(event.target.value)
                   updatePlayerName(event.target.value)
@@ -328,7 +358,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
           {isLocalReady ? (
             <div className={styles.lockedBoard}>
               <h2 className={styles.lockedHeading}><CheckCircle2 className="h-5 w-5" aria-hidden="true" /> Board ready</h2>
-              <p className={styles.lockedCopy}>{isRemoteReady ? 'Both Players are ready. Starting the Match.' : 'Waiting for your friend to finish.'}</p>
+              <p className={styles.lockedCopy}>{isRemoteReady ? 'Both Players are ready. Starting the Match.' : isStrangerMatch ? 'Waiting for opponent to finish.' : 'Waiting for your friend to finish.'}</p>
               {state.localPlayer.setupConfig ? (
                 <BingoBoardView board={state.localPlayer.setupConfig} calls={[]} playersById={{}} disabled />
               ) : null}

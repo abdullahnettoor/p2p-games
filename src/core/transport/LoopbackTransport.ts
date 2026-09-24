@@ -21,6 +21,7 @@ export class LoopbackTransport implements ITransport {
   public readonly localPlayerId: string
   public remotePlayerId: string | null = null
   public readonly role: PlayerRole
+  public isSignalingReleased = false
 
   private targetTransport: LoopbackTransport | null = null
   private messageHandlers = new Set<TransportEventHandler>()
@@ -125,6 +126,10 @@ export class LoopbackTransport implements ITransport {
   public onSignalingChange(handler: SignalingChangeHandler): () => void {
     this.signalingChangeHandlers.add(handler)
     return () => this.signalingChangeHandlers.delete(handler)
+  }
+
+  public releaseSignaling(): void {
+    this.isSignalingReleased = true
   }
 
   public disconnect(): void {

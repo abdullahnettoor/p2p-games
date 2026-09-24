@@ -317,4 +317,34 @@ describe('BingoMatchLobby', () => {
 
     expect(screen.queryByRole('dialog', { name: 'Invite QR code' })).not.toBeInTheDocument()
   })
+
+  it("renders Play with a stranger button when onPlayStranger is provided", async () => {
+    const session = await createHostSession()
+    const onPlayStranger = vi.fn()
+    render(<BingoMatchLobby session={session} onPlayStranger={onPlayStranger} />)
+
+    const strangerBtn = screen.getByRole("button", { name: /Play with a stranger/i })
+    expect(strangerBtn).toBeInTheDocument()
+
+    fireEvent.click(strangerBtn)
+    expect(onPlayStranger).toHaveBeenCalledTimes(1)
+  })
+
+  it("hides invite area and locks name input when isStrangerMatch is true", async () => {
+    const session = await createHostSession()
+    session.state.localPlayer.name = "Swift Otter"
+
+    render(<BingoMatchLobby session={session} isStrangerMatch={true} />)
+
+    // Invite area with QR and share buttons must NOT be rendered
+    expect(screen.queryByLabelText("Match invite")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Show invite QR code" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Room code:/i)).not.toBeInTheDocument()
+
+    // Name input is disabled so the auto-generated stranger name cannot be overwritten
+    const nameInput = screen.getByLabelText(/Your name/i)
+    expect(nameInput).toBeDisabled()
+    expect(nameInput).toHaveValue("Swift Otter")
+  })
 })
+
