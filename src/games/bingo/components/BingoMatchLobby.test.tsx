@@ -254,6 +254,7 @@ describe('BingoMatchLobby', () => {
 
     await waitFor(() => expect(onMatchStart).toHaveBeenCalled())
   })
+
   it('displays the room code when available in the lobby state', async () => {
     const session = await createHostSession()
     session.state.roomCode = 'K7M4QX'
@@ -273,12 +274,23 @@ describe('BingoMatchLobby', () => {
     expect(screen.queryByRole('button', { name: 'Show invite QR code' })).not.toBeInTheDocument()
   })
 
-  it('shows room code entry input and navigates on submit', async () => {
+  it('hides room code entry input for hosts', async () => {
     const session = await createHostSession()
+    render(<BingoMatchLobby session={session} />)
+    expect(screen.queryByRole('button', { name: /Join another room with a code/i })).not.toBeInTheDocument()
+  })
+
+  it('shows room code entry input for guests and navigates on submit', async () => {
+    const [, guestTransport] = createLoopbackTransportPair()
+    const guestSession = new LobbySession<BingoBoard>({
+      transport: guestTransport,
+      playerName: 'GuestPlayer',
+      validateSetup: (board) => validateBingoBoard(board).valid,
+    })
     const onJoinRoomCode = vi.fn()
 
-    render(<BingoMatchLobby session={session} onJoinRoomCode={onJoinRoomCode} />)
-    const toggleButton = screen.getByRole('button', { name: /Have a friend's room code\? Enter code/i })
+    render(<BingoMatchLobby session={guestSession} onJoinRoomCode={onJoinRoomCode} />)
+    const toggleButton = screen.getByRole('button', { name: /Join another room with a code/i })
     fireEvent.click(toggleButton)
 
     const input = screen.getByPlaceholderText('CODE')
@@ -287,4 +299,22 @@ describe('BingoMatchLobby', () => {
 
     expect(onJoinRoomCode).toHaveBeenCalledWith('K7M4QX')
   })
-});
+
+  it('closes QR modal when signaling drops into reconnecting or error', async () => {
+    const session = await createHostSession()
+    render(<BingoMatchLobby session={session} />)
+
+    // Open QR modal
+    const qrButton = screen.getByRole('button', { name: 'Show invite QR code' })
+    fireEvent.click(qrButton)
+    expect(screen.getByRole('dialog', { name: 'Invite QR code' })).toBeInTheDocument()
+
+    // Signaling drops into reconnecting
+    act(() => {
+      ;(session as any).state = { ...(session as any).state, isReconnecting: true }
+      ;(session as any).notify()
+    })
+
+    expect(screen.queryByRole('dialog', { name: 'Invite QR code' })).not.toBeInTheDocument()
+  })
+})

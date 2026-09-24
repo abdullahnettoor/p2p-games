@@ -18,7 +18,6 @@ import {
   CircleHelp,
   Copy,
   QrCode,
-
   Loader2,
   Pencil,
   RotateCcw,
@@ -104,6 +103,12 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
       window.location.assign(`/bingo?room=${encodeURIComponent(code)}`)
     }
   }
+
+  useEffect(() => {
+    if (state.isReconnecting || state.error) {
+      setShowQr(false)
+    }
+  }, [state.isReconnecting, state.error])
 
   useEffect(() => {
     if (!showQr || !state.inviteUrl) return
@@ -252,7 +257,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
           </section>
         ) : null}
 
-        {!isRemoteConnected ? (
+        {!isHost && !isRemoteConnected ? (
           <div className={styles.joinCodeSection}>
             {!showJoinInput ? (
               <button
@@ -260,7 +265,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
                 onClick={() => setShowJoinInput(true)}
                 className={styles.joinCodeToggle}
               >
-                {isHost ? "Have a friend's room code? Enter code" : "Join another room with a code"}
+                Join another room with a code
               </button>
             ) : (
               <form onSubmit={handleJoinByCode} className={styles.joinCodeForm}>

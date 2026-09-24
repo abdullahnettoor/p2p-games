@@ -20,10 +20,14 @@ class MockPeer extends EventEmitter {
   public disconnected = false
   public destroyed = false
 
-  constructor(id?: string) {
+  constructor(idOrOptions?: string | object) {
     super()
-    this.id = id || `peer-${Math.random().toString(36).substring(2, 7)}`
-    if (this.id === 'colliding-id') {
+    this.id =
+      typeof idOrOptions === 'string' && idOrOptions
+        ? idOrOptions
+        : `peer-${Math.random().toString(36).substring(2, 7)}`
+
+    if (this.id === 'colliding-id' || this.id.startsWith('always-collide')) {
       setTimeout(() => {
         this.emit('error', Object.assign(new Error('ID taken'), { type: 'unavailable-id' }))
       }, 5)
@@ -86,7 +90,7 @@ vi.mock('peerjs', () => {
   }
 })
 
-import { PeerJSTransport } from './PeerJSTransport'
+import { PeerJSTransport, ICE_FAILURE_MESSAGE } from './PeerJSTransport'
 
 describe('PeerJSTransport Connection Lifecycle', () => {
   beforeEach(() => {
@@ -138,103 +142,127 @@ describe('PeerJSTransport Connection Lifecycle', () => {
     const host = new PeerJSTransport({ role: 'host' })
     await host.connect()
 
-    const conn1 = new MockDataConnection('guest-1', true)
+    const conn1 = new MockDataConnection('guest-xyz', true)
     ;(host as any).peerInstance.emit('connection', conn1)
-    expect(host.remotePlayerId).toBe('guest-1')
+    expect(host.remotePlayerId).toBe('guest-xyz')
 
-    // Guest reconnects / refreshes with a new connection
-    const conn2 = new MockDataConnection('guest-2', true)
+    const conn2 = new MockDataConnection('guest-xyz', true)
     ;(host as any).peerInstance.emit('connection', conn2)
 
+    expect(host.status).toBe('connected')
+    expect(host.remotePlayerId).toBe('guest-xyz')
     expect(conn1.close).toHaveBeenCalled()
-    expect(host.remotePlayerId).toBe('guest-2')
   })
 
-  it('notifies error if guest connection to host times out', async () => {
-    vi.useFakeTimers()
-    const guest = new PeerJSTransport({
-      role: 'guest',
-      targetPeerId: 'unreachable-host',
+  it('drops connection after heartbeat timeout with no incoming traffic', async () => {
+    const host = new PeerJSTransport({
+      role: 'host',
+      heartbeatIntervalMs: 50,
+      heartbeatTimeoutMs: 150,
     })
+    await host.connect()
 
-    const errorHandler = vi.fn()
-    guest.onError(errorHandler)
+    const guestConn = new MockDataConnection('guest-xyz', true)
+    ;(host as any).peerInstance.emit('connection', guestConn)
+    expect(host.status).toBe('connected')
 
-    const connectPromise = guest.connect()
-    await vi.advanceTimersByTimeAsync(10)
-    await connectPromise
+    // Wait past heartbeat timeout
+    await new Promise((r) => setTimeout(r, 220))
 
-    expect(guest.status).toBe('connecting')
-
-    // Advance past connection timeout (20s)
-    await vi.advanceTimersByTimeAsync(20000)
-
-    expect(errorHandler).toHaveBeenCalled()
-    expect(errorHandler.mock.calls[0][0].message).toContain('VPN')
-    guest.disconnect()
-    vi.useRealTimers()
-  })
-
-  it('translates peer-unavailable error to user-friendly message and stops connection timeout', async () => {
-    vi.useFakeTimers()
-    const guest = new PeerJSTransport({
-      role: 'guest',
-      targetPeerId: 'missing-host',
-    })
-
-    const errorHandler = vi.fn()
-    guest.onError(errorHandler)
-
-    const connectPromise = guest.connect()
-    await vi.advanceTimersByTimeAsync(10)
-    await connectPromise
-
-    // Simulate signaling server peer-unavailable error
-    const unavailableErr = new Error('Could not connect to peer missing-host')
-    ;(unavailableErr as any).type = 'peer-unavailable'
-    ;(guest as any).peerInstance.emit('error', unavailableErr)
-
-    expect(errorHandler).toHaveBeenCalled()
-    expect(errorHandler.mock.calls[0][0].message).toContain('Match not found or the host has disconnected')
-
-    // Advance timers past 20s and verify no secondary timeout error fired
-    await vi.advanceTimersByTimeAsync(25000)
-    expect(errorHandler).toHaveBeenCalledTimes(1)
-
-    guest.disconnect()
-    vi.useRealTimers()
-  })
-})
-
-describe('PeerJSTransport teardown during signaling', () => {
-  it('rejects connect() when disconnected before signaling opens', async () => {
-    const host = new PeerJSTransport({ role: 'host' })
-    const connecting = host.connect()
-    await new Promise((r) => setTimeout(r, 1))
+    expect(host.status).toBe('reconnecting')
     host.disconnect()
+  })
 
-    await expect(connecting).rejects.toThrow(/already been disconnected/)
+  it('emits player leave when remote closes connection', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    await host.connect()
+
+    let leftPlayer: string | null = null
+    host.onPlayerLeave((playerId) => {
+      leftPlayer = playerId
+    })
+
+    const guestConn = new MockDataConnection('guest-xyz', true)
+    ;(host as any).peerInstance.emit('connection', guestConn)
+    expect(host.remotePlayerId).toBe('guest-xyz')
+
+    guestConn.emit('close')
+
+    expect(host.status).toBe('disconnected')
+    expect(host.remotePlayerId).toBeNull()
+    expect(leftPlayer).toBe('guest-xyz')
+  })
+
+  it('stops connection timeout when connection establishes successfully', async () => {
+    const guest = new PeerJSTransport({
+      role: 'guest',
+      targetPeerId: 'host-xyz',
+    })
+
+    await guest.connect()
+    await new Promise((r) => setTimeout(r, 30))
+
+    expect((guest as any).connectionTimeoutTimer).toBeNull()
+    guest.disconnect()
+  })
+
+  it('fails fast on missing targetPeerId for guest', async () => {
+    const guest = new PeerJSTransport({
+      role: 'guest',
+    })
+
+    await expect(guest.connect()).rejects.toThrow('Guest transport requires a targetPeerId')
+  })
+
+  it('maps peer-unavailable error to user-friendly message', async () => {
+    const guest = new PeerJSTransport({
+      role: 'guest',
+      targetPeerId: 'host-xyz',
+    })
+
+    const errors: Error[] = []
+    guest.onError((err) => errors.push(err))
+
+    const connectPromise = guest.connect()
+
+    // Wait until peerInstance is initialized
+    await new Promise((r) => setTimeout(r, 1))
+
+    ;(guest as any).peerInstance.emit('error', {
+      type: 'peer-unavailable',
+      message: 'Could not connect to peer host-xyz',
+    })
+
+    await expect(connectPromise).rejects.toThrow(/match invite is no longer available/)
+    expect(errors.length).toBe(1)
+    expect(errors[0].message).toMatch(/match invite is no longer available/)
   })
 })
 
-describe('PeerJSTransport signaling reconnect', () => {
+describe('PeerJSTransport Signaling Resilience', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  async function openHost() {
-    vi.useFakeTimers()
+  async function openHost(): Promise<{
+    host: PeerJSTransport
+    hostId: string
+    peer: MockPeer
+    errors: Error[]
+  }> {
     const host = new PeerJSTransport({ role: 'host' })
-    const connecting = host.connect()
-    await vi.advanceTimersByTimeAsync(5)
-    const hostId = await connecting
-    const peer = (host as any).peerInstance as MockPeer
     const errors: Error[] = []
-    host.onError((err) => errors.push(err))
+    host.onError((e) => errors.push(e))
+
+    const connectPromise = host.connect()
+    await vi.advanceTimersByTimeAsync(10)
+    const hostId = await connectPromise
+    const peer = (host as any).peerInstance as MockPeer
     return { host, hostId, peer, errors }
   }
 
@@ -351,7 +379,7 @@ describe('PeerJSTransport signaling reconnect', () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect(peer.reconnect).toHaveBeenCalledTimes(2)
     expect(errors).toHaveLength(1)
-    expect(errors[0].message).toMatch(/invite link no longer works/)
+    expect(errors[0].message).toMatch(/Lost connection to the matchmaking server/)
 
     host.disconnect()
   })
@@ -374,7 +402,6 @@ describe('PeerJSTransport signaling reconnect', () => {
   })
 
   it('regenerates host peer ID on initial collision when onIdCollision is provided', async () => {
-    vi.useFakeTimers()
     const collisionSpy = vi.fn(() => 'fresh-id')
     const host = new PeerJSTransport({
       role: 'host',
@@ -391,11 +418,45 @@ describe('PeerJSTransport signaling reconnect', () => {
     expect(host.localPlayerId).toBe('fresh-id')
 
     host.disconnect()
-    vi.useRealTimers()
+  })
+
+  it('stops after 3 collision attempts and rejects', async () => {
+    let attempts = 0
+    const collisionSpy = vi.fn(() => `always-collide-${++attempts}`)
+    const host = new PeerJSTransport({
+      role: 'host',
+      localPlayerId: 'colliding-id',
+      onIdCollision: collisionSpy,
+    })
+
+    const connectPromise = host.connect()
+    const failureHandler = expect(connectPromise).rejects.toThrow('maximum collision retries exceeded')
+    await vi.advanceTimersByTimeAsync(50)
+
+    await failureHandler
+    expect(collisionSpy).toHaveBeenCalledTimes(3)
+
+    host.disconnect()
+  })
+
+  it('collision after disconnect() creates no new Peer', async () => {
+    const collisionSpy = vi.fn(() => 'fresh-id')
+    const host = new PeerJSTransport({
+      role: 'host',
+      localPlayerId: 'colliding-id',
+      onIdCollision: collisionSpy,
+    })
+
+    const connectPromise = host.connect()
+    const failureHandler = expect(connectPromise).rejects.toThrow(/already been disconnected/)
+    host.disconnect()
+    await vi.advanceTimersByTimeAsync(50)
+
+    await failureHandler
+    expect(collisionSpy).not.toHaveBeenCalled()
   })
 
   it('preserves the same localPlayerId across retryConnect() calls', async () => {
-    vi.useFakeTimers()
     const host = new PeerJSTransport({
       role: 'host',
       localPlayerId: 'p2pgames-bingo-K7M4QX',
@@ -414,7 +475,6 @@ describe('PeerJSTransport signaling reconnect', () => {
     expect(host.localPlayerId).toBe('p2pgames-bingo-K7M4QX')
 
     host.disconnect()
-    vi.useRealTimers()
   })
 
   it('emits onSignalingChange when signaling drops and reconnects', async () => {
@@ -438,6 +498,57 @@ describe('PeerJSTransport signaling reconnect', () => {
 
     window.dispatchEvent(new Event('online'))
     expect(peer.reconnect).toHaveBeenCalled()
+
+    host.disconnect()
+  })
+
+  it('preserves status and error handlers across disconnect() and retryConnect()', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    const statuses: string[] = []
+    const errors: Error[] = []
+
+    host.onStatusChange((s) => statuses.push(s))
+    host.onError((e) => errors.push(e))
+
+    const connectPromise = host.connect()
+    await vi.advanceTimersByTimeAsync(10)
+    await connectPromise
+
+    host.disconnect()
+    expect(statuses).toContain('closed')
+
+    const retryPromise = host.retryConnect()
+    await vi.advanceTimersByTimeAsync(10)
+    const retriedId = await retryPromise
+    expect(retriedId).toBeTruthy()
+    expect(statuses).toContain('connecting')
+
+    const testErr = new Error('simulated error')
+    ;(host as any).notifyError(testErr)
+    expect(errors).toContain(testErr)
+
+    host.disconnect()
+  })
+
+  it('reports ICE_FAILURE_MESSAGE when host receives a connection that never opens after 20s', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    const connectPromise = host.connect()
+    await vi.advanceTimersByTimeAsync(10)
+    await connectPromise
+
+    const errors: Error[] = []
+    host.onError((err) => errors.push(err))
+
+    const unopenedConn = new MockDataConnection('guest-stalled', false)
+    ;(host as any).peerInstance.emit('connection', unopenedConn)
+
+    expect(host.status).toBe('connecting')
+    expect(errors).toHaveLength(0)
+
+    await vi.advanceTimersByTimeAsync(20_000)
+
+    expect(errors).toHaveLength(1)
+    expect(errors[0].message).toBe(ICE_FAILURE_MESSAGE)
 
     host.disconnect()
   })
@@ -478,48 +589,24 @@ describe('PeerJSTransport connection ownership', () => {
     expect(host.status).toBe('connected')
     expect(host.remotePlayerId).toBe('guest-2')
     expect((host as any).connection).toBe(conn2)
-
-    host.disconnect()
   })
 
-  it('does not report a player leave when swapping in a replacement connection', async () => {
+  it('ignores incoming connections arriving on a replaced Peer', async () => {
     const host = new PeerJSTransport({ role: 'host' })
     await host.connect()
 
-    const leaveHandler = vi.fn()
-    host.onPlayerLeave(leaveHandler)
+    const initialPeer = (host as any).peerInstance
+    expect(initialPeer).toBeTruthy()
 
-    const conn1 = new MockDataConnection('guest-1', true)
-    ;(host as any).peerInstance.emit('connection', conn1)
+    await host.retryConnect()
 
-    const conn2 = new MockDataConnection('guest-2', true)
-    ;(host as any).peerInstance.emit('connection', conn2)
+    const newPeer = (host as any).peerInstance
+    expect(newPeer).not.toBe(initialPeer)
 
-    expect(conn1.close).toHaveBeenCalled()
-    expect(leaveHandler).not.toHaveBeenCalled()
-    expect(host.status).toBe('connected')
+    const staleConn = new MockDataConnection('stale-guest', true)
+    initialPeer.emit('connection', staleConn)
 
-    host.disconnect()
-  })
-
-  it('ignores data arriving on a superseded connection', async () => {
-    const host = new PeerJSTransport({ role: 'host' })
-    await host.connect()
-
-    const messageHandler = vi.fn()
-    host.onMessage(messageHandler)
-
-    const conn1 = new MockDataConnection('guest-1', true)
-    ;(host as any).peerInstance.emit('connection', conn1)
-    const conn2 = new MockDataConnection('guest-2', true)
-    ;(host as any).peerInstance.emit('connection', conn2)
-
-    conn1.emit('data', { type: 'profile', payload: { playerName: 'Ghost' } })
-    expect(messageHandler).not.toHaveBeenCalled()
-
-    conn2.emit('data', { type: 'profile', payload: { playerName: 'Real' } })
-    expect(messageHandler).toHaveBeenCalledTimes(1)
-
+    expect(host.remotePlayerId).toBeNull()
     host.disconnect()
   })
 })

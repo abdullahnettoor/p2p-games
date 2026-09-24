@@ -26,10 +26,12 @@ describe('roomCode', () => {
       }
     })
 
-    it('generates unique codes across multiple calls', () => {
+    it('generates unique codes across multiple calls without bias', () => {
       const codes = new Set<string>()
       for (let i = 0; i < 50; i++) {
-        codes.add(generateRoomCode())
+        const code = generateRoomCode()
+        expect(code).toMatch(/^[2-9A-HJ-KM-NP-Z]{6}$/)
+        codes.add(code)
       }
       expect(codes.size).toBe(50)
     })
@@ -61,14 +63,23 @@ describe('roomCode', () => {
       expect(extractRoomCode('/bingo?room=K7M4QX&ref=share')).toBe('K7M4QX')
     })
 
-    it('extracts code from raw user input', () => {
+    it('extracts code from raw user input (case-insensitive)', () => {
       expect(extractRoomCode('k7m4qx')).toBe('K7M4QX')
       expect(extractRoomCode('K7-M4-QX')).toBe('K7M4QX')
     })
 
-    it('returns null for empty or invalid strings', () => {
+    it('rejects codes containing ambiguous characters (0, O, 1, I, L)', () => {
+      expect(extractRoomCode('07M4QX')).toBeNull()
+      expect(extractRoomCode('K7MOQX')).toBeNull()
+      expect(extractRoomCode('17M4QX')).toBeNull()
+      expect(extractRoomCode('K7MIQX')).toBeNull()
+      expect(extractRoomCode('K7MLQX')).toBeNull()
+    })
+
+    it('returns null for empty or invalid length strings', () => {
       expect(extractRoomCode('')).toBeNull()
       expect(extractRoomCode('ab')).toBeNull() // too short
+      expect(extractRoomCode('K7M4QX78')).toBeNull() // too long (8 chars)
     })
   })
 
@@ -79,8 +90,18 @@ describe('roomCode', () => {
       expect(resolveTargetPeerId('tictactoe', 'K7-M4QX')).toBe('p2pgames-tictactoe-K7M4QX')
     })
 
-    it('leaves already-namespaced IDs untouched', () => {
+    it('leaves already-namespaced IDs untouched if game segment matches', () => {
       expect(resolveTargetPeerId('bingo', 'p2pgames-bingo-K7M4QX')).toBe('p2pgames-bingo-K7M4QX')
+      expect(resolveTargetPeerId('bingo', 'p2pgames-BINGO-k7m4qx')).toBe('p2pgames-bingo-K7M4QX')
+    })
+
+    it('rejects already-namespaced IDs if game segment does not match', () => {
+      // Trying to join bingo with a tictactoe room ID
+      expect(resolveTargetPeerId('bingo', 'p2pgames-tictactoe-K7M4QX')).toBeUndefined()
+    })
+
+    it('rejects invalid or ambiguous room codes', () => {
+      expect(resolveTargetPeerId('bingo', '01OIL2')).toBeUndefined()
     })
 
     it('preserves legacy UUID match IDs', () => {

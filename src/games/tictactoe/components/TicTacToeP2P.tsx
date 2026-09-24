@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PeerJSTransport } from '@/core/transport/PeerJSTransport'
 import { TransportStatus } from '@/core/transport/types'
 import { PlayerRole } from '@/core/games/types'
@@ -9,36 +9,51 @@ import {
   formatHostPeerId,
   resolveTargetPeerId,
   createGameInviteUrl,
+  extractRoomCode,
 } from '@/core/lobby/roomCode'
+import { applyMove, initState, serializeBoard, validateMove } from '../engine'
 import { TicTacToeState } from '../types'
-import { initState, applyMove, validateMove } from '../engine'
-import { Wifi, WifiOff, Copy, Check, QrCode } from 'lucide-react'
 
 export interface TicTacToeP2PProps {
   role: PlayerRole
   matchId?: string
 }
 
+interface LogEntry {
+  atMs: number
+  label: string
+}
+
+const STATUS_STYLES: Record<TransportStatus, string> = {
+  disconnected: 'bg-slate-800 text-slate-300 border-slate-700',
+  connecting: 'bg-amber-950 text-amber-300 border-amber-800',
+  connected: 'bg-emerald-950 text-emerald-300 border-emerald-800',
+  reconnecting: 'bg-amber-950 text-amber-300 border-amber-800',
+  closed: 'bg-red-950 text-red-300 border-red-800',
+}
+
+/**
+ * Connectivity proof-of-concept. Talks to PeerJSTransport directly with no
+ * lobby/coordinator layer in between, so a failure here isolates to the SDK and
+ * signaling path rather than to game wiring.
+ */
 export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => {
   const [status, setStatus] = useState<TransportStatus>('disconnected')
   const [localPeerId, setLocalPeerId] = useState<string>('')
   const [remotePeerId, setRemotePeerId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
-  const [logs, setLogs] = useState<string[]>([])
-  const [copied, setCopied] = useState(false)
-  const [latencyMs, setLatencyMs] = useState<number | null>(null)
+  const [log, setLog] = useState<LogEntry[]>([])
   const [game, setGame] = useState<TicTacToeState | null>(null)
+  const [latencyMs, setLatencyMs] = useState<number | null>(null)
 
   const transportRef = useRef<PeerJSTransport | null>(null)
   const gameRef = useRef<TicTacToeState | null>(null)
+  const startedAtRef = useRef<number>(0)
+  const pingSentAtRef = useRef<number>(0)
   gameRef.current = game
 
-  const pingSentAtRef = useRef<number>(0)
-  const startedAtRef = useRef<number>(0)
-
-  const append = useCallback((msg: string) => {
-    const elapsed = ((Date.now() - startedAtRef.current) / 1000).toFixed(1)
-    setLogs((prev) => [...prev.slice(-30), `[+${elapsed}s] ${msg}`])
+  const append = useCallback((label: string) => {
+    setLog((prev) => [...prev, { atMs: Date.now() - startedAtRef.current, label }])
   }, [])
 
   const beginGame = useCallback(
@@ -54,19 +69,18 @@ export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => 
     startedAtRef.current = Date.now()
     let cancelled = false
 
-    const isHost = role === 'host'
-    const initialCode = isHost ? generateRoomCode() : undefined
-    const hostPeerId = isHost && initialCode ? formatHostPeerId('tictactoe', initialCode) : undefined
-    const resolvedTargetId = !isHost ? resolveTargetPeerId('tictactoe', matchId) : undefined
+    const initialHostId = role === 'host' ? formatHostPeerId('tictactoe', generateRoomCode()) : undefined
+    const resolvedTargetId =
+      role === 'guest' && matchId ? resolveTargetPeerId('tictactoe', matchId) : undefined
 
     const transport = new PeerJSTransport({
       role,
-      localPlayerId: hostPeerId,
+      localPlayerId: initialHostId,
       targetPeerId: resolvedTargetId,
-      onIdCollision: () => {
-        const newCode = generateRoomCode()
-        return formatHostPeerId('tictactoe', newCode)
-      },
+      onIdCollision:
+        role === 'host'
+          ? () => formatHostPeerId('tictactoe', generateRoomCode())
+          : undefined,
     })
     transportRef.current = transport
 
@@ -97,7 +111,7 @@ export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => 
         if (message.type === 'move') {
           const move = message.payload.move as { cellIndex: number }
           append(`recv move: cell ${move.cellIndex} from ${message.payload.playerId}`)
-          setGame((prev: TicTacToeState | null) =>
+          setGame((prev) =>
             prev
               ? applyMove(prev, {
                   cellIndex: move.cellIndex,
@@ -157,8 +171,12 @@ export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => 
   const inviteUrl = useMemo(() => {
     if (role !== 'host' || !localPeerId) return ''
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    return createGameInviteUrl(origin, 'tictactoe', localPeerId)
+    return createGameInviteUrl(origin, '/tictactoe', localPeerId)
   }, [role, localPeerId])
+
+  const roomCode = useMemo(() => {
+    return extractRoomCode(localPeerId)
+  }, [localPeerId])
 
   const handleCellClick = (cellIndex: number) => {
     const transport = transportRef.current
@@ -178,8 +196,9 @@ export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => 
 
   const handlePing = () => {
     const transport = transportRef.current
-    if (!transport || status !== 'connected') return
+    if (!transport || transport.status !== 'connected') return
     pingSentAtRef.current = Date.now()
+    setLatencyMs(null)
     transport.send({
       type: 'reaction',
       payload: { emoji: 'ping', playerId: localPeerId, timestamp: Date.now() },
@@ -187,162 +206,157 @@ export const TicTacToeP2P: React.FC<TicTacToeP2PProps> = ({ role, matchId }) => 
     append('sent ping')
   }
 
-  const handleCopy = async () => {
-    if (!inviteUrl) return
-    try {
-      await navigator.clipboard.writeText(inviteUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      append('failed to copy to clipboard')
-    }
-  }
+  const isMyTurn = Boolean(game && game.status === 'active' && game.activePlayerId === localPeerId)
+  const myMark = game?.marks[localPeerId] ?? (role === 'host' ? 'X' : 'O')
 
-  const isMyTurn = Boolean(
-    game && game.status === 'active' && game.activePlayerId === localPeerId
-  )
-
-  const mySymbol = game ? game.marks[localPeerId] ?? null : null
-  const winnerMark = game?.winnerId ? game.marks[game.winnerId] ?? null : null
+  const result = !game
+    ? ''
+    : game.status !== 'completed'
+      ? ''
+      : game.isDraw
+        ? 'draw'
+        : game.winnerId === localPeerId
+          ? 'you-win'
+          : 'you-lose'
 
   return (
-    <div className="space-y-4 max-w-xl mx-auto p-4 bg-slate-900 text-slate-100 rounded-xl shadow-lg border border-slate-800">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div className="flex items-center gap-2">
-          {status === 'connected' ? (
-            <Wifi className="w-5 h-5 text-emerald-400" />
-          ) : (
-            <WifiOff className="w-5 h-5 text-amber-400 animate-pulse" />
-          )}
-          <span className="font-semibold capitalize text-sm">{role} Mode</span>
-          <span
-            className={`text-xs px-2 py-0.5 rounded-full font-mono font-medium ${
-              status === 'connected'
-                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                : 'bg-amber-950 text-amber-300 border border-amber-800'
-            }`}
+    <div className="space-y-5">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-black text-white">Tic-Tac-Toe · Connectivity POC</h1>
+        <p className="text-xs text-slate-400">
+          Drives <code className="text-slate-300">PeerJSTransport</code> directly. If this connects,
+          the PeerJS SDK and signaling path are healthy.
+        </p>
+      </header>
+
+      <section className="grid grid-cols-2 gap-3 text-xs">
+        <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400">Transport status</span>
+            <span
+              data-testid="poc-status"
+              className={`px-2 py-0.5 rounded-full border font-bold ${STATUS_STYLES[status]}`}
+            >
+              {status}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-slate-400 shrink-0">Role</span>
+            <span data-testid="poc-role" className="font-bold text-slate-200">
+              {role} ({myMark})
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-slate-400 shrink-0">Local peer</span>
+            <span
+              data-testid="poc-local-id"
+              className="font-mono text-[10px] text-slate-300 truncate"
+            >
+              {localPeerId || '—'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-slate-400 shrink-0">Remote peer</span>
+            <span
+              data-testid="poc-remote-id"
+              className="font-mono text-[10px] text-slate-300 truncate"
+            >
+              {remotePeerId || '—'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-slate-400 shrink-0">Round trip</span>
+            <span data-testid="poc-latency" className="font-bold text-slate-200">
+              {latencyMs === null ? '—' : `${latencyMs} ms`}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handlePing}
+            disabled={status !== 'connected'}
+            className="w-full mt-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-bold transition-all"
           >
-            {status}
-          </span>
+            Ping peer
+          </button>
         </div>
-        {latencyMs !== null && status === 'connected' && (
-          <span className="text-xs font-mono text-slate-400">{latencyMs}ms RTT</span>
-        )}
-      </div>
+
+        <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+          <span className="text-slate-400">Event log</span>
+          <ol
+            data-testid="poc-log"
+            className="font-mono text-[10px] text-slate-400 space-y-0.5 max-h-44 overflow-auto"
+          >
+            {log.map((entry, index) => (
+              <li key={`${entry.atMs}-${index}`} className="truncate">
+                <span className="text-slate-600">+{entry.atMs}ms </span>
+                {entry.label}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
 
       {error && (
-        <div className="bg-rose-950/80 border border-rose-800 text-rose-200 p-3 rounded-lg text-sm flex flex-col gap-1">
-          <span className="font-semibold">Connection Error</span>
-          <span>{error}</span>
-        </div>
+        <p
+          data-testid="poc-error"
+          className="p-3 rounded-xl bg-red-950/50 border border-red-800/60 text-xs text-red-300"
+        >
+          {error}
+        </p>
       )}
 
       {role === 'host' && (
-        <div className="bg-slate-800/60 p-3 rounded-lg space-y-2 border border-slate-700/60 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="font-medium text-slate-300">Invite Guest to Match</span>
-            {localPeerId && (
-              <span className="text-slate-400 font-mono">
-                Peer: <span className="text-slate-200">{localPeerId}</span>
+        <div className="space-y-3">
+          {roomCode && (
+            <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-medium">Room Code</span>
+              <span className="font-mono text-sm font-bold tracking-widest text-indigo-400">
+                {roomCode}
               </span>
-            )}
-          </div>
-          {inviteUrl ? (
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={inviteUrl}
-                className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-300 font-mono select-all focus:outline-none focus:border-indigo-500"
-              />
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded font-medium transition-colors"
-                title="Copy invite URL"
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
-              </button>
             </div>
-          ) : (
-            <span className="text-slate-500 italic">Waiting for signaling server...</span>
           )}
+          <label className="block space-y-1">
+            <span className="text-xs font-bold text-slate-400">Invite link</span>
+            <input
+              data-testid="poc-invite-url"
+              readOnly
+              value={inviteUrl}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300"
+            />
+          </label>
         </div>
       )}
 
-      {role === 'guest' && (
-        <div className="bg-slate-800/60 p-2.5 rounded-lg text-xs flex justify-between items-center text-slate-400 border border-slate-700/60">
-          <span>Connecting to host:</span>
-          <span className="font-mono text-slate-200">{matchId ?? 'none specified'}</span>
-        </div>
-      )}
+      <section className="space-y-3">
+        <p data-testid="poc-turn" className="text-xs font-bold text-slate-300">
+          {!game
+            ? 'waiting-for-peer'
+            : game.status === 'completed'
+              ? `game-over:${result}`
+              : isMyTurn
+                ? 'your-turn'
+                : 'opponent-turn'}
+        </p>
 
-      <div className="my-4 flex flex-col items-center">
-        {game && status === 'connected' ? (
-          <div className="space-y-3 flex flex-col items-center">
-            <div className="text-sm font-medium flex items-center gap-2">
-              <span>You are</span>
-              <span className="font-bold text-indigo-400 text-base">{mySymbol}</span>
-              <span>-</span>
-              {game.status === 'completed' ? (
-                <span className="text-emerald-400 font-bold">
-                  {game.isDraw ? "It's a Draw!" : `${winnerMark} Won!`}
-                </span>
-              ) : isMyTurn ? (
-                <span className="text-emerald-400 font-semibold animate-pulse">Your Turn!</span>
-              ) : (
-                <span className="text-slate-400">Waiting for opponent...</span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 w-48 h-48 bg-slate-800 p-2 rounded-xl border border-slate-700">
-              {game.board.map((cell, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleCellClick(idx)}
-                  disabled={!isMyTurn || cell !== null || game.status === 'completed'}
-                  className={`flex items-center justify-center text-2xl font-bold rounded-lg transition-all ${
-                    cell === null && isMyTurn && game.status === 'active'
-                      ? 'bg-slate-700 hover:bg-indigo-600/30 cursor-pointer active:scale-95'
-                      : 'bg-slate-900/60'
-                  } ${
-                    cell === 'X'
-                      ? 'text-indigo-400'
-                      : cell === 'O'
-                      ? 'text-emerald-400'
-                      : 'text-transparent'
-                  }`}
-                >
-                  {cell ?? '-'}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="h-48 flex flex-col items-center justify-center text-slate-500 gap-2 text-sm">
-            <QrCode className="w-8 h-8 opacity-40 animate-pulse" />
-            <span>Waiting for both players to connect...</span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={handlePing}
-          disabled={status !== 'connected'}
-          className="flex-1 text-xs py-1.5 px-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 rounded border border-slate-700 transition-colors"
-        >
-          Send Test Ping
-        </button>
-      </div>
-
-      <div className="border-t border-slate-800/80 pt-2">
-        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Live Peer Log</span>
-        <div className="mt-1 bg-slate-950 font-mono text-[11px] text-slate-400 p-2 rounded h-24 overflow-y-auto space-y-0.5 border border-slate-800">
-          {logs.map((line, i) => (
-            <div key={i} className="leading-tight">{line}</div>
+        <div className="grid grid-cols-3 gap-2 w-60">
+          {(game?.board ?? Array<null>(9).fill(null)).map((cell, index) => (
+            <button
+              key={index}
+              type="button"
+              data-testid={`cell-${index}`}
+              onClick={() => handleCellClick(index)}
+              disabled={!isMyTurn || cell !== null}
+              className="aspect-square rounded-xl bg-slate-900 border border-slate-800 enabled:hover:border-indigo-600 disabled:opacity-60 text-2xl font-black text-white transition-all"
+            >
+              {cell ?? ''}
+            </button>
           ))}
         </div>
-      </div>
+
+        <p data-testid="poc-board" className="font-mono text-xs text-slate-500">
+          {serializeBoard(game?.board ?? Array<null>(9).fill(null))}
+        </p>
+      </section>
     </div>
   )
 }
