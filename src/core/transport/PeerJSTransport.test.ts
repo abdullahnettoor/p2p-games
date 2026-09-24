@@ -55,10 +55,10 @@ class MockPeer extends EventEmitter {
     this.emit('close')
   }
 
-  disconnect() {
+  disconnect = vi.fn(() => {
     this.disconnected = true
     this.emit('disconnected', this.id)
-  }
+  })
 
   /** Set before reconnect() to make the server answer with that PeerJS error. */
   public nextReconnectError: string | null = null
@@ -91,6 +91,7 @@ vi.mock('peerjs', () => {
 })
 
 import { PeerJSTransport, ICE_FAILURE_MESSAGE } from './PeerJSTransport'
+import { HostRejectedError } from './types'
 
 describe('PeerJSTransport Connection Lifecycle', () => {
   beforeEach(() => {
@@ -552,7 +553,9 @@ describe('PeerJSTransport Signaling Resilience', () => {
 
     host.disconnect()
   })
+
 })
+
 
 describe('PeerJSTransport connection ownership', () => {
   beforeEach(() => {
@@ -607,6 +610,136 @@ describe('PeerJSTransport connection ownership', () => {
     initialPeer.emit('connection', staleConn)
 
     expect(host.remotePlayerId).toBeNull()
+    host.disconnect()
+  })
+
+  it("clears pending reject timers when host is disconnected", async () => {
+    const host = new PeerJSTransport({
+      role: "host",
+      rejectExtraConnections: true,
+    })
+    await host.connect()
+
+    const conn1 = new MockDataConnection("guest-1", true)
+    ;(host as any).peerInstance.emit("connection", conn1)
+
+    // Second connection not yet open
+    const conn2 = new MockDataConnection("guest-2", false)
+    ;(host as any).peerInstance.emit("connection", conn2)
+
+    expect((host as any).pendingRejectTimers.size).toBe(1)
+
+    host.disconnect()
+
+    expect((host as any).pendingRejectTimers.size).toBe(0)
+  })
+
+  it("does not emit HostRejectedError when incoming connection closes before opening on host", async () => {
+    const host = new PeerJSTransport({
+      role: "host",
+      rejectExtraConnections: true,
+      isStrangerMatch: true,
+    })
+    const errors: Error[] = []
+    host.onError((err) => errors.push(err))
+
+    await host.connect()
+    const peer = (host as any).peerInstance
+
+    const uncompletedConn = new MockDataConnection("dropping-joiner", false)
+    peer.emit("connection", uncompletedConn)
+
+    uncompletedConn.emit("close")
+
+    expect(errors).toHaveLength(0)
+    expect((host as any).connection).toBeNull()
+
+    host.disconnect()
+  })
+
+  it("does not emit HostRejectedError on friend guest connection drop before open", async () => {
+    const guest = new PeerJSTransport({
+      role: "guest",
+      targetPeerId: "host-friend-id",
+      isStrangerMatch: false,
+    })
+    const errors: Error[] = []
+    guest.onError((err) => errors.push(err))
+
+    await guest.connect()
+    const conn = (guest as any).connection
+    expect(conn).toBeTruthy()
+    conn.emit("close")
+
+    expect(errors.filter((e) => e instanceof HostRejectedError)).toHaveLength(0)
+    guest.disconnect()
+  })
+})
+
+
+describe("PeerJSTransport stranger matchmaking support", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("rejects extra guest connections when rejectExtraConnections is true", async () => {
+    const host = new PeerJSTransport({
+      role: "host",
+      rejectExtraConnections: true,
+    })
+    await host.connect()
+
+    const conn1 = new MockDataConnection("guest-first", true)
+    ;(host as any).peerInstance.emit("connection", conn1)
+
+    expect(host.status).toBe("connected")
+    expect(host.remotePlayerId).toBe("guest-first")
+
+    const conn2 = new MockDataConnection("guest-second", true)
+    ;(host as any).peerInstance.emit("connection", conn2)
+
+    expect(conn2.send).toHaveBeenCalledWith({ type: "reject", payload: { reason: "full" } })
+    expect(conn2.close).toHaveBeenCalled()
+
+    expect(host.remotePlayerId).toBe("guest-first")
+    expect(host.status).toBe("connected")
+
+    host.disconnect()
+  })
+
+  it("guest receives host reject signal and notifies HostRejectedError", async () => {
+    const guest = new PeerJSTransport({
+      role: "guest",
+      targetPeerId: "host-slot-0",
+    })
+
+    const errors: Error[] = []
+    guest.onError((err) => errors.push(err))
+
+    await guest.connect()
+
+    const guestConn = (guest as any).connection
+    guestConn.emit("data", { type: "reject", payload: { reason: "full" } })
+
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toBeInstanceOf(HostRejectedError)
+    expect(errors[0].message).toBe("full")
+
+    guest.disconnect()
+  })
+
+  it("releaseSignaling disconnects from server and prevents reconnect attempts", async () => {
+    const host = new PeerJSTransport({ role: "host" })
+    await host.connect()
+    const peer = (host as any).peerInstance
+
+    host.releaseSignaling()
+
+    expect(peer.disconnect).toHaveBeenCalled()
+
+    window.dispatchEvent(new Event("online"))
+    expect(peer.reconnect).not.toHaveBeenCalled()
+
     host.disconnect()
   })
 })
