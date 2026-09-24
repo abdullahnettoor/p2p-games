@@ -200,6 +200,17 @@ describe('PeerJSTransport Connection Lifecycle', () => {
   })
 })
 
+describe('PeerJSTransport teardown during signaling', () => {
+  it('rejects connect() when disconnected before signaling opens', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    const connecting = host.connect()
+    await new Promise((r) => setTimeout(r, 1))
+    host.disconnect()
+
+    await expect(connecting).rejects.toThrow(/already been disconnected/)
+  })
+})
+
 describe('PeerJSTransport signaling reconnect', () => {
   beforeEach(() => {
     vi.clearAllMocks()

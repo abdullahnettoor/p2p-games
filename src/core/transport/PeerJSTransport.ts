@@ -202,6 +202,10 @@ export class PeerJSTransport implements ITransport {
               // ignore
             }
             this.peerInstance = null
+            if (!isResolved) {
+              isResolved = true
+              reject(new Error('Cannot connect: transport has already been disconnected'))
+            }
             return
           }
 
