@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { BingoOnlineGame } from './BingoOnlineGame'
 import { StrangerMatchmaker } from '@/core/matchmaking/strangerMatch'
+import { LobbyCoordinator } from '@/core/lobby/LobbyCoordinator'
 
 // Mock PeerJSTransport so it doesn't open real WebRTC/PeerJS
 vi.mock('@/core/transport/PeerJSTransport', () => {
@@ -73,6 +74,46 @@ describe('BingoOnlineGame stranger matchmaking UI', () => {
     })
     expect(screen.queryByText(/Looking for a stranger…/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Play with a stranger/i })).toBeInTheDocument()
+  })
+
+  it("cancelling search creates exactly one friend lobby and calls start once", async () => {
+    const startSpy = vi.spyOn(LobbyCoordinator.prototype, "start")
+    const onExit = vi.fn()
+
+    // Mock findMatch to stay pending until cancel
+    vi.spyOn(StrangerMatchmaker.prototype, "findMatch").mockImplementation(function (this: any) {
+      return new Promise((_, reject) => {
+        const originalCancel = this.cancel.bind(this)
+        this.cancel = () => {
+          originalCancel()
+          reject(new Error("Matchmaking cancelled by player"))
+        }
+      })
+    })
+
+    render(<BingoOnlineGame role="host" onExit={onExit} />)
+
+    await act(async () => {
+      vi.runOnlyPendingTimers()
+    })
+
+    // Mount started the initial lobby exactly once
+    expect(startSpy).toHaveBeenCalledTimes(1)
+
+    // Start stranger search
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Play with a stranger/i }))
+    })
+
+    // Click cancel search
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Cancel search/i }))
+      vi.runOnlyPendingTimers()
+    })
+
+    // Returned to friend lobby, start should be called exactly once more (total 2)
+    expect(startSpy).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole("button", { name: /Play with a stranger/i })).toBeInTheDocument()
   })
 
   it('shows timeout screen when matchmaking times out after 60s', async () => {

@@ -7,7 +7,8 @@ import { PeerJSTransport, PeerJSTransportOptions, isPeerUnavailable } from '../t
 import { generateStrangerName } from './strangerNames'
 
 export const DEFAULT_SLOT_COUNT = 4
-export const DEFAULT_PROBE_TIMEOUT_MS = 2500
+export const DEFAULT_PROBE_TIMEOUT_MS = 8000
+export const DEFAULT_RECHECK_INTERVAL_MS = 2500
 export const DEFAULT_SEARCH_TIMEOUT_MS = 60000
 
 export type StrangerMatchStatus =
@@ -34,6 +35,7 @@ export interface StrangerMatchmakerOptions {
   slotPrefix?: string
   probeTimeoutMs?: number
   searchTimeoutMs?: number
+  recheckIntervalMs?: number
   createTransport?: (options: PeerJSTransportOptions) => ITransport
   onStatusChange?: (status: StrangerMatchStatus, detail?: string) => void
   randomFn?: () => number
@@ -63,6 +65,7 @@ export class StrangerMatchmaker {
   private slotPrefix?: string
   private probeTimeoutMs: number
   private searchTimeoutMs: number
+  private recheckIntervalMs: number
   private createTransport: (options: PeerJSTransportOptions) => ITransport
   private onStatusChange?: (status: StrangerMatchStatus, detail?: string) => void
   private randomFn: () => number
@@ -78,6 +81,7 @@ export class StrangerMatchmaker {
     this.slotPrefix = options.slotPrefix
     this.probeTimeoutMs = options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
     this.searchTimeoutMs = options.searchTimeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS
+    this.recheckIntervalMs = options.recheckIntervalMs ?? DEFAULT_RECHECK_INTERVAL_MS
     this.createTransport =
       options.createTransport ?? ((opts) => new PeerJSTransport(opts))
     this.onStatusChange = options.onStatusChange
@@ -182,6 +186,7 @@ export class StrangerMatchmaker {
     const guest = this.createTransport({
       role: 'guest',
       targetPeerId,
+      isStrangerMatch: true,
     })
     this.currentTransport = guest
 
@@ -204,7 +209,11 @@ export class StrangerMatchmaker {
         settled = true
         cleanup()
         if (!result) {
-          guest.disconnect()
+          try {
+            guest.disconnect()
+          } catch {
+            // Safe ignore
+          }
         }
         resolve(result)
       }
@@ -213,7 +222,7 @@ export class StrangerMatchmaker {
         finish(null)
       }, this.probeTimeoutMs)
 
-      guest.onError((err) => {
+      guest.onError(() => {
         // peer-unavailable or HostRejectedError means slot is either empty or full
         finish(null)
       })
@@ -231,7 +240,68 @@ export class StrangerMatchmaker {
         }
       })
 
-      guest.connect().catch((err) => {
+      guest.connect().catch(() => {
+        finish(null)
+      })
+    })
+  }
+
+  private async probeLowerSlot(
+    slotIndex: number,
+    strangerName: string,
+    onTransportCreated?: (transport: ITransport) => void
+  ): Promise<StrangerMatchResult | null> {
+    const targetPeerId = getSlotPeerId(this.gameId, slotIndex, this.slotPrefix)
+    const guest = this.createTransport({
+      role: 'guest',
+      targetPeerId,
+      isStrangerMatch: true,
+    })
+    onTransportCreated?.(guest)
+
+    return new Promise<StrangerMatchResult | null>((resolve) => {
+      let settled = false
+      let probeTimer: ReturnType<typeof setTimeout> | null = null
+
+      const finish = (result: StrangerMatchResult | null) => {
+        if (settled) return
+        settled = true
+        if (probeTimer) {
+          clearTimeout(probeTimer)
+          probeTimer = null
+        }
+        if (!result) {
+          try {
+            guest.disconnect()
+          } catch {
+            // Safe ignore
+          }
+        }
+        resolve(result)
+      }
+
+      probeTimer = setTimeout(() => {
+        finish(null)
+      }, Math.min(this.probeTimeoutMs, 3000))
+
+      guest.onError(() => {
+        finish(null)
+      })
+
+      guest.onStatusChange((newStatus) => {
+        if (newStatus === 'connected') {
+          const remotePeerId = guest.remotePlayerId || targetPeerId
+          finish({
+            transport: guest,
+            role: 'guest',
+            localPeerId: guest.localPlayerId,
+            remotePeerId,
+            strangerName,
+          })
+        }
+      })
+
+      guest.connect().catch(() => {
         finish(null)
       })
     })
@@ -248,6 +318,7 @@ export class StrangerMatchmaker {
       role: 'host',
       localPlayerId: localPeerId,
       rejectExtraConnections: true,
+      isStrangerMatch: true,
     })
     this.currentTransport = host
 
@@ -277,22 +348,45 @@ export class StrangerMatchmaker {
 
     return new Promise<StrangerMatchResult | null>((resolve) => {
       let settled = false
+      let recheckTimer: ReturnType<typeof setTimeout> | null = null
+      let activeProbeTransport: ITransport | null = null
 
       const finish = (result: StrangerMatchResult | null) => {
         if (settled) return
         settled = true
+        if (recheckTimer) {
+          clearTimeout(recheckTimer)
+          recheckTimer = null
+        }
+        if (activeProbeTransport) {
+          try {
+            activeProbeTransport.disconnect()
+          } catch {
+            // Safe ignore
+          }
+          activeProbeTransport = null
+        }
         this.cancelWait = null
+
         if (!result) {
           host.disconnect()
           if (this.currentTransport === host) {
             this.currentTransport = null
           }
         } else {
-          // Release signaling so the broker slot is freed for the next waiting players
-          try {
-            host.releaseSignaling?.()
-          } catch {
-            // Safe ignore
+          // If match came from probing a lower slot as guest, tear down this host
+          if (result.transport !== host) {
+            host.disconnect()
+            if (this.currentTransport === host) {
+              this.currentTransport = null
+            }
+          } else {
+            // Host match: release signaling so broker slot is freed for the next pair
+            try {
+              host.releaseSignaling?.()
+            } catch {
+              // Safe ignore
+            }
           }
         }
         resolve(result)
@@ -325,7 +419,53 @@ export class StrangerMatchmaker {
           remotePeerId: host.remotePlayerId,
           strangerName,
         })
+        return
       }
+
+      // Tie-breaker: while waiting as host on a slot with index > 0,
+      // periodically probe lower slots. If a host is waiting on a lower slot,
+      // the higher slot index gives up its slot and joins as guest.
+      const scheduleRecheck = () => {
+        if (slotIndex === 0 || settled || this.isCancelled) return
+        recheckTimer = setTimeout(async () => {
+          if (settled || this.isCancelled) return
+
+          for (let lowerSlot = 0; lowerSlot < slotIndex; lowerSlot++) {
+            if (settled || this.isCancelled) return
+
+            const probeResult = await this.probeLowerSlot(
+              lowerSlot,
+              strangerName,
+              (transport) => {
+                activeProbeTransport = transport
+              }
+            )
+            activeProbeTransport = null
+
+            if (settled || this.isCancelled) {
+              if (probeResult) {
+                try {
+                  probeResult.transport.disconnect()
+                } catch {
+                  // Safe ignore
+                }
+              }
+              return
+            }
+
+            if (probeResult) {
+              finish(probeResult)
+              return
+            }
+          }
+
+          if (!settled && !this.isCancelled) {
+            scheduleRecheck()
+          }
+        }, this.recheckIntervalMs)
+      }
+
+      scheduleRecheck()
     })
   }
 

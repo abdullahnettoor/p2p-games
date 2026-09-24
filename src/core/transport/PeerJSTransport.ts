@@ -21,6 +21,7 @@ export interface PeerJSTransportOptions {
   heartbeatTimeoutMs?: number
   onIdCollision?: () => string
   rejectExtraConnections?: boolean
+  isStrangerMatch?: boolean
 }
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
@@ -77,6 +78,7 @@ export class PeerJSTransport implements ITransport {
   private heartbeatTimeoutMs: number
   private onIdCollision?: () => string
   private rejectExtraConnections: boolean
+  private isStrangerMatch: boolean
   private isSignalingReleased = false
 
   private peerInstance: any = null
@@ -84,6 +86,7 @@ export class PeerJSTransport implements ITransport {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   private signalingRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private pendingRejectTimers = new Set<ReturnType<typeof setTimeout>>()
   private signalingRetryAttempt = 0
   private lastMessageTimestamp = 0
   private isDestroyed = false
@@ -104,6 +107,7 @@ export class PeerJSTransport implements ITransport {
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? DEFAULT_HEARTBEAT_TIMEOUT_MS
     this.onIdCollision = options.onIdCollision
     this.rejectExtraConnections = options.rejectExtraConnections ?? false
+    this.isStrangerMatch = options.isStrangerMatch ?? false
   }
 
   public async connect(): Promise<string> {
@@ -160,10 +164,12 @@ export class PeerJSTransport implements ITransport {
             : new Peer({
                 config: { iceServers: this.iceServers },
               })
+
           this.peerInstance = peer
 
           peer.on('open', (assignedId: string) => {
             cleanupSignalingTimeout()
+            this.stopSignalingRetry()
             const isReconnect = hasOpened
             this.signalingRetryAttempt = 0
             this.notifySignalingChange(false)
@@ -242,14 +248,28 @@ export class PeerJSTransport implements ITransport {
                 if (conn.open) {
                   sendReject()
                 } else {
-                  conn.on('open', sendReject)
-                  setTimeout(() => {
+                  let rejectTimer: ReturnType<typeof setTimeout> | null = null
+                  const onConnOpen = () => {
+                    if (rejectTimer) {
+                      clearTimeout(rejectTimer)
+                      this.pendingRejectTimers.delete(rejectTimer)
+                      rejectTimer = null
+                    }
+                    sendReject()
+                  }
+                  conn.on('open', onConnOpen)
+                  rejectTimer = setTimeout(() => {
+                    if (rejectTimer) {
+                      this.pendingRejectTimers.delete(rejectTimer)
+                      rejectTimer = null
+                    }
                     try {
                       conn.close()
                     } catch {
                       // Safe ignore
                     }
                   }, 1000)
+                  this.pendingRejectTimers.add(rejectTimer)
                 }
                 return
               }
@@ -260,7 +280,17 @@ export class PeerJSTransport implements ITransport {
           peer.on('error', (err: any) => {
             if (this.isDestroyed || this.peerInstance !== peer) return
 
-            if (err?.type === 'unavailable-id' && this.onIdCollision && this.role === 'host') {
+            // Recoverable signaling drop: the 'disconnected' handler retries and
+            // reports only if every retry fails. Live DataChannels are unaffected.
+            if (hasOpened && TRANSIENT_SIGNALING_ERRORS.has(err?.type)) return
+
+            // Host collision on initial open: regenerate ID if collision handler is provided
+            if (
+              !hasOpened &&
+              err?.type === 'unavailable-id' &&
+              this.role === 'host' &&
+              this.onIdCollision
+            ) {
               cleanupSignalingTimeout()
               this.stopConnectionTimeout()
 
@@ -293,10 +323,6 @@ export class PeerJSTransport implements ITransport {
               initPeer()
               return
             }
-
-            // Recoverable signaling drop: the 'disconnected' handler retries and
-            // reports only if every retry fails. Live DataChannels are unaffected.
-            if (hasOpened && TRANSIENT_SIGNALING_ERRORS.has(err?.type)) return
 
             cleanupSignalingTimeout()
             this.stopConnectionTimeout()
@@ -368,7 +394,9 @@ export class PeerJSTransport implements ITransport {
     this.signalingRetryAttempt++
 
     this.signalingRetryTimer = setTimeout(() => {
+      this.signalingRetryTimer = null
       if (this.isDestroyed || this.peerInstance !== peer || peer.destroyed) return
+      if (!peer.disconnected) return
       try {
         peer.reconnect()
       } catch {
@@ -437,8 +465,8 @@ export class PeerJSTransport implements ITransport {
       this.stopConnectionTimeout()
       this.remotePlayerId = conn.peer
       this.setStatus('connected')
-      this.notifyPlayerJoin(conn.peer)
       this.startHeartbeat()
+      this.notifyPlayerJoin(conn.peer)
       onOpenCallback?.()
     }
 
@@ -476,8 +504,10 @@ export class PeerJSTransport implements ITransport {
       if (this.status !== 'connected') {
         this.stopConnectionTimeout()
         this.connection = null
-        if (!isRejected) {
+        if (this.isStrangerMatch && this.role === 'guest' && !isRejected) {
           this.notifyError(new HostRejectedError('Connection closed before opening'))
+        } else if (!this.isStrangerMatch) {
+          this.handleConnectionDrop()
         }
         return
       }
@@ -588,6 +618,11 @@ export class PeerJSTransport implements ITransport {
       window.removeEventListener('online', this.handleOnline)
     }
 
+    for (const timer of this.pendingRejectTimers) {
+      clearTimeout(timer)
+    }
+    this.pendingRejectTimers.clear()
+
     const previousPeer = this.peerInstance
     const previousConnection = this.connection
     this.peerInstance = null
@@ -651,6 +686,11 @@ export class PeerJSTransport implements ITransport {
     this.stopHeartbeat()
     this.stopConnectionTimeout()
     this.stopSignalingRetry()
+
+    for (const timer of this.pendingRejectTimers) {
+      clearTimeout(timer)
+    }
+    this.pendingRejectTimers.clear()
 
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange)

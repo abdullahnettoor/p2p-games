@@ -357,6 +357,41 @@ describe('StrangerMatchmaker', () => {
     res2.transport.disconnect()
   })
 
+  it("breaks ties when two players claim different slots simultaneously: higher slot index yields and joins lower slot host", async () => {
+    // Player 1 claims slot 0
+    const p1 = new StrangerMatchmaker({
+      gameId: "bingo",
+      slotCount: 2,
+      probeTimeoutMs: 50,
+      recheckIntervalMs: 30,
+      randomFn: () => 0.99, // indices [0, 1] -> claims slot 0 first
+      createTransport: (opts) => new MockSimulatedTransport(broker, opts),
+    })
+
+    // Player 2 claims slot 1
+    const p2 = new StrangerMatchmaker({
+      gameId: "bingo",
+      slotCount: 2,
+      probeTimeoutMs: 50,
+      recheckIntervalMs: 30,
+      randomFn: () => 0.0, // indices [1, 0] -> claims slot 1 first
+      createTransport: (opts) => new MockSimulatedTransport(broker, opts),
+    })
+
+    const p1Promise = p1.findMatch()
+    const p2Promise = p2.findMatch()
+
+    const [res1, res2] = await Promise.all([p1Promise, p2Promise])
+
+    expect(res1.role).toBe("host")
+    expect(res2.role).toBe("guest")
+    expect(res1.localPeerId).toBe(getSlotPeerId("bingo", 0))
+    expect(res2.remotePeerId).toBe(getSlotPeerId("bingo", 0))
+
+    res1.transport.disconnect()
+    res2.transport.disconnect()
+  })
+
   it('cancels search cleanly and tears down transport', async () => {
     const matchmaker = new StrangerMatchmaker({
       gameId: 'bingo',

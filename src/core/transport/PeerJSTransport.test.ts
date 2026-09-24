@@ -553,7 +553,9 @@ describe('PeerJSTransport Signaling Resilience', () => {
 
     host.disconnect()
   })
+
 })
+
 
 describe('PeerJSTransport connection ownership', () => {
   beforeEach(() => {
@@ -610,7 +612,70 @@ describe('PeerJSTransport connection ownership', () => {
     expect(host.remotePlayerId).toBeNull()
     host.disconnect()
   })
+
+  it("clears pending reject timers when host is disconnected", async () => {
+    const host = new PeerJSTransport({
+      role: "host",
+      rejectExtraConnections: true,
+    })
+    await host.connect()
+
+    const conn1 = new MockDataConnection("guest-1", true)
+    ;(host as any).peerInstance.emit("connection", conn1)
+
+    // Second connection not yet open
+    const conn2 = new MockDataConnection("guest-2", false)
+    ;(host as any).peerInstance.emit("connection", conn2)
+
+    expect((host as any).pendingRejectTimers.size).toBe(1)
+
+    host.disconnect()
+
+    expect((host as any).pendingRejectTimers.size).toBe(0)
+  })
+
+  it("does not emit HostRejectedError when incoming connection closes before opening on host", async () => {
+    const host = new PeerJSTransport({
+      role: "host",
+      rejectExtraConnections: true,
+      isStrangerMatch: true,
+    })
+    const errors: Error[] = []
+    host.onError((err) => errors.push(err))
+
+    await host.connect()
+    const peer = (host as any).peerInstance
+
+    const uncompletedConn = new MockDataConnection("dropping-joiner", false)
+    peer.emit("connection", uncompletedConn)
+
+    uncompletedConn.emit("close")
+
+    expect(errors).toHaveLength(0)
+    expect((host as any).connection).toBeNull()
+
+    host.disconnect()
+  })
+
+  it("does not emit HostRejectedError on friend guest connection drop before open", async () => {
+    const guest = new PeerJSTransport({
+      role: "guest",
+      targetPeerId: "host-friend-id",
+      isStrangerMatch: false,
+    })
+    const errors: Error[] = []
+    guest.onError((err) => errors.push(err))
+
+    await guest.connect()
+    const conn = (guest as any).connection
+    expect(conn).toBeTruthy()
+    conn.emit("close")
+
+    expect(errors.filter((e) => e instanceof HostRejectedError)).toHaveLength(0)
+    guest.disconnect()
+  })
 })
+
 
 describe("PeerJSTransport stranger matchmaking support", () => {
   beforeEach(() => {
