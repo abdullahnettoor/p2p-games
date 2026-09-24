@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'events'
 
 class MockDataConnection extends EventEmitter {
@@ -48,6 +48,29 @@ class MockPeer extends EventEmitter {
   disconnect() {
     this.disconnected = true
     this.emit('disconnected', this.id)
+  }
+
+  /** Set before reconnect() to make the server answer with that PeerJS error. */
+  public nextReconnectError: string | null = null
+
+  reconnect = vi.fn(() => {
+    this.disconnected = false
+    const errorType = this.nextReconnectError
+    setTimeout(() => {
+      if (errorType) {
+        // Mirrors PeerJS: emit the error, then drop back to disconnected.
+        this.emit('error', Object.assign(new Error(errorType), { type: errorType }))
+        this.disconnect()
+      } else {
+        this.emit('open', this.id)
+      }
+    }, 5)
+  })
+
+  /** Mirrors PeerJS losing its socket: a 'network' error, then 'disconnected'. */
+  dropSignaling() {
+    this.emit('error', Object.assign(new Error('Lost connection to server.'), { type: 'network' }))
+    this.disconnect()
   }
 }
 
@@ -174,6 +197,174 @@ describe('PeerJSTransport Connection Lifecycle', () => {
 
     guest.disconnect()
     vi.useRealTimers()
+  })
+})
+
+describe('PeerJSTransport teardown during signaling', () => {
+  it('rejects connect() when disconnected before signaling opens', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    const connecting = host.connect()
+    await new Promise((r) => setTimeout(r, 1))
+    host.disconnect()
+
+    await expect(connecting).rejects.toThrow(/already been disconnected/)
+  })
+})
+
+describe('PeerJSTransport signaling reconnect', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function openHost() {
+    vi.useFakeTimers()
+    const host = new PeerJSTransport({ role: 'host' })
+    const connecting = host.connect()
+    await vi.advanceTimersByTimeAsync(5)
+    const hostId = await connecting
+    const peer = (host as any).peerInstance as MockPeer
+    const errors: Error[] = []
+    host.onError((err) => errors.push(err))
+    return { host, hostId, peer, errors }
+  }
+
+  it('re-registers the same peer ID when signaling drops in the lobby', async () => {
+    const { host, hostId, peer, errors } = await openHost()
+    expect(host.status).toBe('connecting')
+
+    peer.dropSignaling()
+    await vi.advanceTimersByTimeAsync(1000 + 5)
+
+    expect(peer.reconnect).toHaveBeenCalledTimes(1)
+    expect(peer.disconnected).toBe(false)
+    expect(host.localPlayerId).toBe(hostId)
+    expect(host.status).toBe('connecting')
+    expect(errors).toEqual([])
+
+    host.disconnect()
+  })
+
+  it('keeps a live match connected when signaling drops', async () => {
+    const { host, peer, errors } = await openHost()
+    peer.emit('connection', new MockDataConnection('guest-xyz', true))
+    expect(host.status).toBe('connected')
+
+    const statuses: string[] = []
+    host.onStatusChange((s) => statuses.push(s))
+
+    peer.dropSignaling()
+    await vi.advanceTimersByTimeAsync(1000 + 5)
+
+    expect(peer.reconnect).toHaveBeenCalledTimes(1)
+    expect(host.status).toBe('connected')
+    expect(statuses).toEqual([])
+    expect(errors).toEqual([])
+
+    host.disconnect()
+  })
+
+  it('does not report an error to the lobby when signaling retries exhaust during an active match', async () => {
+    const { host, peer, errors } = await openHost()
+    peer.emit('connection', new MockDataConnection('guest-xyz', true))
+    expect(host.status).toBe('connected')
+
+    peer.nextReconnectError = 'unavailable-id'
+    peer.dropSignaling()
+
+    // Run past all retry attempts (1000ms + 3000ms + margin)
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    expect(peer.reconnect).toHaveBeenCalledTimes(2)
+    // Direct DataChannel connection is still live and connected!
+    expect(host.status).toBe('connected')
+    // No error was reported to the lobby coordinator!
+    expect(errors).toEqual([])
+
+    host.disconnect()
+  })
+
+  it('does not report error when signaling drops while tab is hidden, and reconnects on visibilitychange', async () => {
+    const { host, peer, errors } = await openHost()
+    expect(host.status).toBe('connecting')
+
+    // Simulate tab being hidden (phone locked or backgrounded)
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      configurable: true,
+      writable: true,
+    })
+
+    peer.dropSignaling()
+
+    // Timers advance while tab is hidden
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    // Should NOT report invite as dead while hidden
+    expect(errors).toEqual([])
+
+    // User returns to tab
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+      writable: true,
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    // Reconnection triggered immediately upon visibility change
+    expect(peer.reconnect).toHaveBeenCalled()
+
+    host.disconnect()
+  })
+
+  it('does not reconnect after disconnect()', async () => {
+    const { host, peer } = await openHost()
+
+    peer.dropSignaling()
+    host.disconnect()
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    expect(peer.reconnect).not.toHaveBeenCalled()
+  })
+
+  it('retries unavailable-id with backoff, then reports the invite as lost', async () => {
+    const { host, peer, errors } = await openHost()
+    peer.nextReconnectError = 'unavailable-id'
+
+    peer.dropSignaling()
+    await vi.advanceTimersByTimeAsync(1000 + 5)
+    expect(peer.reconnect).toHaveBeenCalledTimes(1)
+    expect(errors).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(3000 + 5)
+    expect(peer.reconnect).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(peer.reconnect).toHaveBeenCalledTimes(2)
+    expect(errors).toHaveLength(1)
+    expect(errors[0].message).toMatch(/invite link no longer works/)
+
+    host.disconnect()
+  })
+
+  it('recovers when a later retry succeeds after unavailable-id', async () => {
+    const { host, hostId, peer, errors } = await openHost()
+    peer.nextReconnectError = 'unavailable-id'
+
+    peer.dropSignaling()
+    await vi.advanceTimersByTimeAsync(1000 + 5)
+    peer.nextReconnectError = null
+    await vi.advanceTimersByTimeAsync(3000 + 5)
+
+    expect(peer.reconnect).toHaveBeenCalledTimes(2)
+    expect(peer.disconnected).toBe(false)
+    expect(host.localPlayerId).toBe(hostId)
+    expect(errors).toEqual([])
+
+    host.disconnect()
   })
 })
 
