@@ -9,16 +9,6 @@ import {
   ErrorEventHandler,
 } from './types'
 
-export interface PeerServerConfig {
-  host?: string
-  port?: number
-  path?: string
-  secure?: boolean
-  pingInterval?: number
-  key?: string
-  token?: string
-}
-
 export interface PeerJSTransportOptions {
   role: PlayerRole
   localPlayerId?: string
@@ -26,7 +16,6 @@ export interface PeerJSTransportOptions {
   iceServers?: RTCIceServer[]
   heartbeatIntervalMs?: number
   heartbeatTimeoutMs?: number
-  signalingServer?: PeerServerConfig
 }
 
 const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
@@ -58,37 +47,6 @@ function configuredTurnServers(): RTCIceServer[] {
   ]
 }
 
-/**
- * Optional self-hosted signaling server (e.g. PeerServer or Cloudflare Worker).
- * When unset, PeerJS defaults to the public 0.peerjs.com broker.
- */
-export function configuredSignalingServer(): PeerServerConfig | undefined {
-  const host = process.env.NEXT_PUBLIC_PEER_HOST
-  if (!host) return undefined
-
-  const port = process.env.NEXT_PUBLIC_PEER_PORT
-    ? Number(process.env.NEXT_PUBLIC_PEER_PORT)
-    : undefined
-  const path = process.env.NEXT_PUBLIC_PEER_PATH ?? '/'
-  const secure =
-    process.env.NEXT_PUBLIC_PEER_SECURE !== undefined
-      ? process.env.NEXT_PUBLIC_PEER_SECURE === 'true'
-      : true
-  const pingInterval = process.env.NEXT_PUBLIC_PEER_PING_INTERVAL_MS
-    ? Number(process.env.NEXT_PUBLIC_PEER_PING_INTERVAL_MS)
-    : undefined
-  const key = process.env.NEXT_PUBLIC_PEER_KEY
-
-  return {
-    host,
-    port,
-    path,
-    secure,
-    pingInterval,
-    key,
-  }
-}
-
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [...DEFAULT_STUN_SERVERS, ...configuredTurnServers()]
 
 /**
@@ -103,6 +61,30 @@ const ICE_FAILURE_MESSAGE =
 
 const PEER_UNAVAILABLE_MESSAGE =
   'Match not found or the host has disconnected. Please verify you have the latest invite link from the host.'
+
+const SIGNALING_LOST_MESSAGE =
+  'Lost connection to the matchmaking server and could not reconnect. Your invite link no longer ' +
+  'works; create a new one.'
+
+/**
+ * Delays between attempts to re-register with the signaling server after the
+ * socket drops. Once these are used up the transport reports
+ * SIGNALING_LOST_MESSAGE so the lobby can offer a fresh invite.
+ */
+const SIGNALING_RETRY_DELAYS_MS = [1000, 3000]
+
+/**
+ * PeerJS error types raised by a signaling drop or a failed reconnect attempt
+ * (including `unavailable-id` when the server still holds our old ID). They are
+ * transient while retries remain, so they are not surfaced to the UI.
+ */
+const TRANSIENT_SIGNALING_ERRORS = new Set([
+  'network',
+  'socket-error',
+  'socket-closed',
+  'server-error',
+  'unavailable-id',
+])
 
 function isPeerUnavailable(err: unknown, message: string): boolean {
   return (
@@ -121,13 +103,13 @@ export class PeerJSTransport implements ITransport {
   private iceServers: RTCIceServer[]
   private heartbeatIntervalMs: number
   private heartbeatTimeoutMs: number
-  private signalingServer?: PeerServerConfig
 
   private peerInstance: any = null
   private connection: any = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null
-  private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private signalingRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private signalingRetryAttempt = 0
   private lastMessageTimestamp = 0
   /**
    * Set by disconnect(). connect() awaits a dynamic import before the Peer
@@ -149,7 +131,6 @@ export class PeerJSTransport implements ITransport {
     this.iceServers = options.iceServers ?? DEFAULT_ICE_SERVERS
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 5000
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 15000
-    this.signalingServer = options.signalingServer ?? configuredSignalingServer()
   }
 
   public async connect(): Promise<string> {
@@ -188,31 +169,25 @@ export class PeerJSTransport implements ITransport {
         clearTimeout(signalingTimeout)
       }
 
+      // True once this Peer has registered with signaling at least once, so
+      // later signaling errors are drops to recover from, not setup failures.
+      let hasOpened = false
+
       try {
-        const signaling = this.signalingServer
-        const peerOptions: Record<string, unknown> = {
-          config: { iceServers: this.iceServers },
-        }
-
-        if (signaling?.host) {
-          peerOptions.host = signaling.host
-          if (signaling.port !== undefined) peerOptions.port = signaling.port
-          if (signaling.path !== undefined) peerOptions.path = signaling.path
-          if (signaling.secure !== undefined) peerOptions.secure = signaling.secure
-          if (signaling.pingInterval !== undefined) peerOptions.pingInterval = signaling.pingInterval
-          if (signaling.key !== undefined) peerOptions.key = signaling.key
-          if (signaling.token !== undefined) peerOptions.token = signaling.token
-        }
-
         const peer = this.localPlayerId
-          ? new Peer(this.localPlayerId, peerOptions as any)
-          : new Peer(peerOptions as any)
+          ? new Peer(this.localPlayerId, {
+              config: { iceServers: this.iceServers },
+            })
+          : new Peer({
+              config: { iceServers: this.iceServers },
+            })
 
         this.peerInstance = peer
 
         peer.on('open', (assignedId: string) => {
           cleanupSignalingTimeout()
-          this.stopSignalingReconnect()
+          this.stopSignalingRetry()
+          this.signalingRetryAttempt = 0
 
           // Torn down while the signaling handshake was in flight.
           if (this.isDestroyed) {
@@ -228,10 +203,12 @@ export class PeerJSTransport implements ITransport {
             return
           }
 
+          const isReconnect = hasOpened
+          hasOpened = true
           this.localPlayerId = assignedId
 
-          // Only initiate guest connection if we don't already have an open/active connection
-          if (this.role === 'guest' && !this.connection) {
+          // A signaling reconnect must not redial a host the guest already has.
+          if (this.role === 'guest' && !isReconnect) {
             if (!this.targetPeerId) {
               const err = new Error('Guest transport requires a targetPeerId')
               this.notifyError(err)
@@ -272,6 +249,11 @@ export class PeerJSTransport implements ITransport {
 
         peer.on('error', (err: any) => {
           if (this.peerInstance !== peer) return
+
+          // Recoverable signaling drop: the 'disconnected' handler retries and
+          // reports only if every retry fails. Live DataChannels are unaffected.
+          if (hasOpened && TRANSIENT_SIGNALING_ERRORS.has(err?.type)) return
+
           cleanupSignalingTimeout()
           this.stopConnectionTimeout()
 
@@ -287,17 +269,18 @@ export class PeerJSTransport implements ITransport {
           }
         })
 
+        // Fires on any signaling drop, including a failed reconnect attempt.
+        // Status is left alone: a live match runs over the direct DataChannel,
+        // and in the lobby we keep the same peer ID so the invite stays valid.
         peer.on('disconnected', () => {
-          if (this.peerInstance !== peer || this.isDestroyed) return
-          // When signaling drops, keep attempting reconnection in the background
-          // so the host's peer ID / invite QR remains valid and peers can still connect.
-          this.scheduleSignalingReconnect()
+          if (this.isDestroyed || this.peerInstance !== peer || peer.destroyed) return
+          if (!hasOpened) return
+          this.scheduleSignalingRetry(peer)
         })
 
         peer.on('close', () => {
           if (this.peerInstance !== peer) return
           cleanupSignalingTimeout()
-          this.stopSignalingReconnect()
           this.disconnect()
         })
       } catch (err) {
@@ -309,30 +292,33 @@ export class PeerJSTransport implements ITransport {
     })
   }
 
-  private scheduleSignalingReconnect(): void {
-    if (this.isDestroyed || !this.peerInstance || this.peerInstance.destroyed) return
-    this.stopSignalingReconnect()
+  private scheduleSignalingRetry(peer: any): void {
+    this.stopSignalingRetry()
 
-    const attemptReconnect = () => {
-      if (this.isDestroyed || !this.peerInstance || this.peerInstance.destroyed) return
-      if (this.peerInstance.disconnected) {
-        try {
-          this.peerInstance.reconnect()
-        } catch {
-          // If reconnect threw synchronously, catch and retry later
-        }
-        // Reschedule in case signaling is still disconnected
-        this.signalingReconnectTimer = setTimeout(attemptReconnect, 2500)
-      }
+    if (this.signalingRetryAttempt >= SIGNALING_RETRY_DELAYS_MS.length) {
+      this.notifyError(new Error(SIGNALING_LOST_MESSAGE))
+      return
     }
 
-    attemptReconnect()
+    const delay = SIGNALING_RETRY_DELAYS_MS[this.signalingRetryAttempt]
+    this.signalingRetryAttempt += 1
+
+    this.signalingRetryTimer = setTimeout(() => {
+      this.signalingRetryTimer = null
+      if (this.isDestroyed || this.peerInstance !== peer || peer.destroyed) return
+      if (!peer.disconnected) return
+      try {
+        peer.reconnect()
+      } catch {
+        // Only throws for a destroyed peer, whose 'close' tears us down.
+      }
+    }, delay)
   }
 
-  private stopSignalingReconnect(): void {
-    if (this.signalingReconnectTimer) {
-      clearTimeout(this.signalingReconnectTimer)
-      this.signalingReconnectTimer = null
+  private stopSignalingRetry(): void {
+    if (this.signalingRetryTimer) {
+      clearTimeout(this.signalingRetryTimer)
+      this.signalingRetryTimer = null
     }
   }
 
@@ -448,7 +434,8 @@ export class PeerJSTransport implements ITransport {
   public async retryConnect(): Promise<string> {
     this.stopHeartbeat()
     this.stopConnectionTimeout()
-    this.stopSignalingReconnect()
+    this.stopSignalingRetry()
+    this.signalingRetryAttempt = 0
     const previousPeer = this.peerInstance
     const previousConnection = this.connection
     this.peerInstance = null
@@ -475,7 +462,7 @@ export class PeerJSTransport implements ITransport {
     this.isDestroyed = true
     this.stopHeartbeat()
     this.stopConnectionTimeout()
-    this.stopSignalingReconnect()
+    this.stopSignalingRetry()
 
     const prevRemote = this.remotePlayerId
     this.setStatus('closed')
@@ -552,26 +539,22 @@ export class PeerJSTransport implements ITransport {
   private setStatus(newStatus: TransportStatus): void {
     if (this.status === newStatus) return
     this.status = newStatus
-    this.notifyStatus(newStatus)
+    this.statusHandlers.forEach((h) => h(newStatus))
   }
 
   private notifyMessage(message: TransportMessage): void {
-    this.messageHandlers.forEach((handler) => handler(message))
-  }
-
-  private notifyStatus(status: TransportStatus): void {
-    this.statusHandlers.forEach((handler) => handler(status))
+    this.messageHandlers.forEach((h) => h(message))
   }
 
   private notifyPlayerJoin(playerId: string): void {
-    this.playerJoinHandlers.forEach((handler) => handler(playerId))
+    this.playerJoinHandlers.forEach((h) => h(playerId))
   }
 
   private notifyPlayerLeave(playerId: string): void {
-    this.playerLeaveHandlers.forEach((handler) => handler(playerId))
+    this.playerLeaveHandlers.forEach((h) => h(playerId))
   }
 
   private notifyError(error: Error): void {
-    this.errorHandlers.forEach((handler) => handler(error))
+    this.errorHandlers.forEach((h) => h(error))
   }
 }

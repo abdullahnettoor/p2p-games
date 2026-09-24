@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'events'
 
 class MockDataConnection extends EventEmitter {
@@ -19,17 +19,10 @@ class MockPeer extends EventEmitter {
   public id: string
   public disconnected = false
   public destroyed = false
-  public options: any
 
-  constructor(idOrOptions?: string | any, options?: any) {
+  constructor(id?: string) {
     super()
-    if (typeof idOrOptions === 'string') {
-      this.id = idOrOptions
-      this.options = options
-    } else {
-      this.id = `peer-${Math.random().toString(36).substring(2, 7)}`
-      this.options = idOrOptions
-    }
+    this.id = id || `peer-${Math.random().toString(36).substring(2, 7)}`
     setTimeout(() => {
       this.emit('open', this.id)
     }, 5)
@@ -57,12 +50,28 @@ class MockPeer extends EventEmitter {
     this.emit('disconnected', this.id)
   }
 
+  /** Set before reconnect() to make the server answer with that PeerJS error. */
+  public nextReconnectError: string | null = null
+
   reconnect = vi.fn(() => {
     this.disconnected = false
+    const errorType = this.nextReconnectError
     setTimeout(() => {
-      this.emit('open', this.id)
+      if (errorType) {
+        // Mirrors PeerJS: emit the error, then drop back to disconnected.
+        this.emit('error', Object.assign(new Error(errorType), { type: errorType }))
+        this.disconnect()
+      } else {
+        this.emit('open', this.id)
+      }
     }, 5)
   })
+
+  /** Mirrors PeerJS losing its socket: a 'network' error, then 'disconnected'. */
+  dropSignaling() {
+    this.emit('error', Object.assign(new Error('Lost connection to server.'), { type: 'network' }))
+    this.disconnect()
+  }
 }
 
 vi.mock('peerjs', () => {
@@ -71,7 +80,7 @@ vi.mock('peerjs', () => {
   }
 })
 
-import { PeerJSTransport, configuredSignalingServer } from './PeerJSTransport'
+import { PeerJSTransport } from './PeerJSTransport'
 
 describe('PeerJSTransport Connection Lifecycle', () => {
   beforeEach(() => {
@@ -191,98 +200,107 @@ describe('PeerJSTransport Connection Lifecycle', () => {
   })
 })
 
-describe('PeerJSTransport signaling auto-reconnect & configuration', () => {
+describe('PeerJSTransport signaling reconnect', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('automatically reconnects when signaling disconnects while waiting in lobby', async () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function openHost() {
+    vi.useFakeTimers()
     const host = new PeerJSTransport({ role: 'host' })
-    const hostId = await host.connect()
-
+    const connecting = host.connect()
+    await vi.advanceTimersByTimeAsync(5)
+    const hostId = await connecting
     const peer = (host as any).peerInstance as MockPeer
-    expect(peer).toBeTruthy()
+    const errors: Error[] = []
+    host.onError((err) => errors.push(err))
+    return { host, hostId, peer, errors }
+  }
 
-    // Host is in lobby ('connecting')
+  it('re-registers the same peer ID when signaling drops in the lobby', async () => {
+    const { host, hostId, peer, errors } = await openHost()
     expect(host.status).toBe('connecting')
 
-    // Simulate signaling server dropping the socket
-    peer.disconnect()
+    peer.dropSignaling()
+    await vi.advanceTimersByTimeAsync(1000 + 5)
 
-    // PeerJSTransport should immediately invoke reconnect
-    expect(peer.reconnect).toHaveBeenCalled()
+    expect(peer.reconnect).toHaveBeenCalledTimes(1)
+    expect(peer.disconnected).toBe(false)
     expect(host.localPlayerId).toBe(hostId)
+    expect(host.status).toBe('connecting')
+    expect(errors).toEqual([])
 
     host.disconnect()
   })
 
-  it('preserves connected match status when signaling drops during active game', async () => {
-    const host = new PeerJSTransport({ role: 'host' })
-    await host.connect()
-
-    const conn = new MockDataConnection('guest-xyz', true)
-    ;(host as any).peerInstance.emit('connection', conn)
+  it('keeps a live match connected when signaling drops', async () => {
+    const { host, peer, errors } = await openHost()
+    peer.emit('connection', new MockDataConnection('guest-xyz', true))
     expect(host.status).toBe('connected')
 
-    const peer = (host as any).peerInstance as MockPeer
-    // Simulate signaling socket drop
-    peer.disconnect()
+    const statuses: string[] = []
+    host.onStatusChange((s) => statuses.push(s))
 
-    // P2P game status remains 'connected' while peer signaling reconnects
+    peer.dropSignaling()
+    await vi.advanceTimersByTimeAsync(1000 + 5)
+
+    expect(peer.reconnect).toHaveBeenCalledTimes(1)
     expect(host.status).toBe('connected')
-    expect(peer.reconnect).toHaveBeenCalled()
+    expect(statuses).toEqual([])
+    expect(errors).toEqual([])
 
     host.disconnect()
   })
 
-  it('passes custom signalingServer options to Peer constructor', async () => {
-    const customConfig = {
-      host: 'signaling.mygame.com',
-      port: 9000,
-      path: '/peerjs',
-      secure: true,
-      pingInterval: 10000,
-    }
-    const transport = new PeerJSTransport({
-      role: 'host',
-      signalingServer: customConfig,
-    })
+  it('does not reconnect after disconnect()', async () => {
+    const { host, peer } = await openHost()
 
-    await transport.connect()
-    const peer = (transport as any).peerInstance as MockPeer
+    peer.dropSignaling()
+    host.disconnect()
+    await vi.advanceTimersByTimeAsync(10_000)
 
-    expect(peer.options).toMatchObject({
-      host: 'signaling.mygame.com',
-      port: 9000,
-      path: '/peerjs',
-      secure: true,
-      pingInterval: 10000,
-    })
-
-    transport.disconnect()
+    expect(peer.reconnect).not.toHaveBeenCalled()
   })
 
-  it('reads signaling configuration from NEXT_PUBLIC_PEER_* environment variables', () => {
-    const originalEnv = { ...process.env }
-    try {
-      process.env.NEXT_PUBLIC_PEER_HOST = 'custom-peer.internal'
-      process.env.NEXT_PUBLIC_PEER_PORT = '8443'
-      process.env.NEXT_PUBLIC_PEER_PATH = '/custom-path'
-      process.env.NEXT_PUBLIC_PEER_SECURE = 'false'
-      process.env.NEXT_PUBLIC_PEER_PING_INTERVAL_MS = '7000'
+  it('retries unavailable-id with backoff, then reports the invite as lost', async () => {
+    const { host, peer, errors } = await openHost()
+    peer.nextReconnectError = 'unavailable-id'
 
-      const config = configuredSignalingServer()
-      expect(config).toEqual({
-        host: 'custom-peer.internal',
-        port: 8443,
-        path: '/custom-path',
-        secure: false,
-        pingInterval: 7000,
-        key: undefined,
-      })
-    } finally {
-      process.env = originalEnv
-    }
+    peer.dropSignaling()
+    await vi.advanceTimersByTimeAsync(1000 + 5)
+    expect(peer.reconnect).toHaveBeenCalledTimes(1)
+    expect(errors).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(3000 + 5)
+    expect(peer.reconnect).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(peer.reconnect).toHaveBeenCalledTimes(2)
+    expect(errors).toHaveLength(1)
+    expect(errors[0].message).toMatch(/invite link no longer works/)
+
+    host.disconnect()
+  })
+
+  it('recovers when a later retry succeeds after unavailable-id', async () => {
+    const { host, hostId, peer, errors } = await openHost()
+    peer.nextReconnectError = 'unavailable-id'
+
+    peer.dropSignaling()
+    await vi.advanceTimersByTimeAsync(1000 + 5)
+    peer.nextReconnectError = null
+    await vi.advanceTimersByTimeAsync(3000 + 5)
+
+    expect(peer.reconnect).toHaveBeenCalledTimes(2)
+    expect(peer.disconnected).toBe(false)
+    expect(host.localPlayerId).toBe(hostId)
+    expect(errors).toEqual([])
+
+    host.disconnect()
   })
 })
 
