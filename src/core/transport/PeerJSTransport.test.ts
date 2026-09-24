@@ -256,6 +256,59 @@ describe('PeerJSTransport signaling reconnect', () => {
     host.disconnect()
   })
 
+  it('does not report an error to the lobby when signaling retries exhaust during an active match', async () => {
+    const { host, peer, errors } = await openHost()
+    peer.emit('connection', new MockDataConnection('guest-xyz', true))
+    expect(host.status).toBe('connected')
+
+    peer.nextReconnectError = 'unavailable-id'
+    peer.dropSignaling()
+
+    // Run past all retry attempts (1000ms + 3000ms + margin)
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    expect(peer.reconnect).toHaveBeenCalledTimes(2)
+    // Direct DataChannel connection is still live and connected!
+    expect(host.status).toBe('connected')
+    // No error was reported to the lobby coordinator!
+    expect(errors).toEqual([])
+
+    host.disconnect()
+  })
+
+  it('does not report error when signaling drops while tab is hidden, and reconnects on visibilitychange', async () => {
+    const { host, peer, errors } = await openHost()
+    expect(host.status).toBe('connecting')
+
+    // Simulate tab being hidden (phone locked or backgrounded)
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      configurable: true,
+      writable: true,
+    })
+
+    peer.dropSignaling()
+
+    // Timers advance while tab is hidden
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    // Should NOT report invite as dead while hidden
+    expect(errors).toEqual([])
+
+    // User returns to tab
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+      writable: true,
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    // Reconnection triggered immediately upon visibility change
+    expect(peer.reconnect).toHaveBeenCalled()
+
+    host.disconnect()
+  })
+
   it('does not reconnect after disconnect()', async () => {
     const { host, peer } = await openHost()
 

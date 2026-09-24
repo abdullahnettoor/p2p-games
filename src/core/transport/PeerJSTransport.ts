@@ -146,6 +146,11 @@ export class PeerJSTransport implements ITransport {
 
     this.setStatus('connecting')
 
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+      document.addEventListener('visibilitychange', this.handleVisibilityChange)
+    }
+
     const { Peer } = await import('peerjs')
 
     // disconnect() may have been called while the import was in flight.
@@ -194,12 +199,9 @@ export class PeerJSTransport implements ITransport {
             try {
               peer.destroy()
             } catch {
-              // safe ignore
+              // ignore
             }
-            if (!isResolved) {
-              isResolved = true
-              reject(new Error('Cannot connect: transport has already been disconnected'))
-            }
+            this.peerInstance = null
             return
           }
 
@@ -262,6 +264,16 @@ export class PeerJSTransport implements ITransport {
             isPeerUnavailable(err, rawMessage) ? PEER_UNAVAILABLE_MESSAGE : rawMessage
           )
 
+          // During an active match, P2P communication is direct over the WebRTC
+          // DataChannel; transient broker errors must never disrupt the match.
+          if (
+            this.status === 'connected' &&
+            this.connection &&
+            !isPeerUnavailable(err, rawMessage)
+          ) {
+            return
+          }
+
           this.notifyError(error)
           if (!isResolved && this.status === 'connecting') {
             isResolved = true
@@ -296,7 +308,14 @@ export class PeerJSTransport implements ITransport {
     this.stopSignalingRetry()
 
     if (this.signalingRetryAttempt >= SIGNALING_RETRY_DELAYS_MS.length) {
-      this.notifyError(new Error(SIGNALING_LOST_MESSAGE))
+      // Don't declare the invite dead while the tab is hidden in the background;
+      // visibilitychange will retry when the user returns.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return
+      }
+      if (this.status !== 'connected' || !this.connection) {
+        this.notifyError(new Error(SIGNALING_LOST_MESSAGE))
+      }
       return
     }
 
@@ -319,6 +338,22 @@ export class PeerJSTransport implements ITransport {
     if (this.signalingRetryTimer) {
       clearTimeout(this.signalingRetryTimer)
       this.signalingRetryTimer = null
+    }
+  }
+
+  private handleVisibilityChange = (): void => {
+    if (typeof document === 'undefined') return
+    if (document.visibilityState === 'visible') {
+      const peer = this.peerInstance
+      if (peer && peer.disconnected && !peer.destroyed && !this.isDestroyed) {
+        this.signalingRetryAttempt = 0
+        this.stopSignalingRetry()
+        try {
+          peer.reconnect()
+        } catch {
+          // Ignore
+        }
+      }
     }
   }
 
@@ -351,50 +386,43 @@ export class PeerJSTransport implements ITransport {
     conn.on('data', (data: any) => {
       if (this.connection !== conn) return
       this.lastMessageTimestamp = Date.now()
-      try {
-        const message: TransportMessage = typeof data === 'string' ? JSON.parse(data) : data
-        if (message.type === 'heartbeat') {
-          return
-        }
-        this.notifyMessage(message)
-      } catch (err) {
-        this.notifyError(err instanceof Error ? err : new Error(String(err)))
-      }
+
+      if (data?.type === 'heartbeat') return
+
+      this.notifyMessage(data as TransportMessage)
     })
 
     conn.on('close', () => {
-      // A superseded connection closing must not clear the live one.
       if (this.connection !== conn) return
-
-      this.stopConnectionTimeout()
-      const prevRemote = this.remotePlayerId
-      this.remotePlayerId = null
-      this.connection = null
-      this.stopHeartbeat()
-      if (this.status !== 'closed') {
-        this.setStatus('disconnected')
-        if (prevRemote) {
-          this.notifyPlayerLeave(prevRemote)
-        }
-      }
+      this.handleConnectionDrop()
     })
 
     conn.on('error', (err: any) => {
       if (this.connection !== conn) return
-
+      const error = err instanceof Error ? err : new Error(String(err))
+      this.stopHeartbeat()
       this.stopConnectionTimeout()
-      const rawMessage = err instanceof Error ? err.message : String(err)
-      const error = new Error(
-        isPeerUnavailable(err, rawMessage) ? PEER_UNAVAILABLE_MESSAGE : rawMessage
-      )
-      this.notifyError(error)
       onErrorCallback?.(error)
+      this.notifyError(error)
     })
+  }
+
+  private handleConnectionDrop(): void {
+    this.stopHeartbeat()
+    this.stopConnectionTimeout()
+    const droppedPlayer = this.remotePlayerId
+    this.connection = null
+    this.remotePlayerId = null
+    this.setStatus('disconnected')
+
+    if (droppedPlayer) {
+      this.notifyPlayerLeave(droppedPlayer)
+    }
   }
 
   public send(message: TransportMessage): void {
     if (this.status !== 'connected' || !this.connection) {
-      throw new Error(`Cannot send message: transport is ${this.status}`)
+      throw new Error(`Cannot send message: transport status is ${this.status}`)
     }
 
     try {
@@ -436,6 +464,9 @@ export class PeerJSTransport implements ITransport {
     this.stopConnectionTimeout()
     this.stopSignalingRetry()
     this.signalingRetryAttempt = 0
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+    }
     const previousPeer = this.peerInstance
     const previousConnection = this.connection
     this.peerInstance = null
@@ -463,6 +494,9 @@ export class PeerJSTransport implements ITransport {
     this.stopHeartbeat()
     this.stopConnectionTimeout()
     this.stopSignalingRetry()
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+    }
 
     const prevRemote = this.remotePlayerId
     this.setStatus('closed')
