@@ -9,6 +9,16 @@ import {
   ErrorEventHandler,
 } from './types'
 
+export interface PeerServerConfig {
+  host?: string
+  port?: number
+  path?: string
+  secure?: boolean
+  pingInterval?: number
+  key?: string
+  token?: string
+}
+
 export interface PeerJSTransportOptions {
   role: PlayerRole
   localPlayerId?: string
@@ -16,6 +26,7 @@ export interface PeerJSTransportOptions {
   iceServers?: RTCIceServer[]
   heartbeatIntervalMs?: number
   heartbeatTimeoutMs?: number
+  signalingServer?: PeerServerConfig
 }
 
 const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
@@ -45,6 +56,37 @@ function configuredTurnServers(): RTCIceServer[] {
       credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
     },
   ]
+}
+
+/**
+ * Optional self-hosted signaling server (e.g. PeerServer or Cloudflare Worker).
+ * When unset, PeerJS defaults to the public 0.peerjs.com broker.
+ */
+export function configuredSignalingServer(): PeerServerConfig | undefined {
+  const host = process.env.NEXT_PUBLIC_PEER_HOST
+  if (!host) return undefined
+
+  const port = process.env.NEXT_PUBLIC_PEER_PORT
+    ? Number(process.env.NEXT_PUBLIC_PEER_PORT)
+    : undefined
+  const path = process.env.NEXT_PUBLIC_PEER_PATH ?? '/'
+  const secure =
+    process.env.NEXT_PUBLIC_PEER_SECURE !== undefined
+      ? process.env.NEXT_PUBLIC_PEER_SECURE === 'true'
+      : true
+  const pingInterval = process.env.NEXT_PUBLIC_PEER_PING_INTERVAL_MS
+    ? Number(process.env.NEXT_PUBLIC_PEER_PING_INTERVAL_MS)
+    : undefined
+  const key = process.env.NEXT_PUBLIC_PEER_KEY
+
+  return {
+    host,
+    port,
+    path,
+    secure,
+    pingInterval,
+    key,
+  }
 }
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [...DEFAULT_STUN_SERVERS, ...configuredTurnServers()]
@@ -79,11 +121,13 @@ export class PeerJSTransport implements ITransport {
   private iceServers: RTCIceServer[]
   private heartbeatIntervalMs: number
   private heartbeatTimeoutMs: number
+  private signalingServer?: PeerServerConfig
 
   private peerInstance: any = null
   private connection: any = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+  private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null
   private lastMessageTimestamp = 0
   /**
    * Set by disconnect(). connect() awaits a dynamic import before the Peer
@@ -105,6 +149,7 @@ export class PeerJSTransport implements ITransport {
     this.iceServers = options.iceServers ?? DEFAULT_ICE_SERVERS
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 5000
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 15000
+    this.signalingServer = options.signalingServer ?? configuredSignalingServer()
   }
 
   public async connect(): Promise<string> {
@@ -144,18 +189,30 @@ export class PeerJSTransport implements ITransport {
       }
 
       try {
+        const signaling = this.signalingServer
+        const peerOptions: Record<string, unknown> = {
+          config: { iceServers: this.iceServers },
+        }
+
+        if (signaling?.host) {
+          peerOptions.host = signaling.host
+          if (signaling.port !== undefined) peerOptions.port = signaling.port
+          if (signaling.path !== undefined) peerOptions.path = signaling.path
+          if (signaling.secure !== undefined) peerOptions.secure = signaling.secure
+          if (signaling.pingInterval !== undefined) peerOptions.pingInterval = signaling.pingInterval
+          if (signaling.key !== undefined) peerOptions.key = signaling.key
+          if (signaling.token !== undefined) peerOptions.token = signaling.token
+        }
+
         const peer = this.localPlayerId
-          ? new Peer(this.localPlayerId, {
-              config: { iceServers: this.iceServers },
-            })
-          : new Peer({
-              config: { iceServers: this.iceServers },
-            })
+          ? new Peer(this.localPlayerId, peerOptions as any)
+          : new Peer(peerOptions as any)
 
         this.peerInstance = peer
 
         peer.on('open', (assignedId: string) => {
           cleanupSignalingTimeout()
+          this.stopSignalingReconnect()
 
           // Torn down while the signaling handshake was in flight.
           if (this.isDestroyed) {
@@ -173,7 +230,8 @@ export class PeerJSTransport implements ITransport {
 
           this.localPlayerId = assignedId
 
-          if (this.role === 'guest') {
+          // Only initiate guest connection if we don't already have an open/active connection
+          if (this.role === 'guest' && !this.connection) {
             if (!this.targetPeerId) {
               const err = new Error('Guest transport requires a targetPeerId')
               this.notifyError(err)
@@ -230,19 +288,16 @@ export class PeerJSTransport implements ITransport {
         })
 
         peer.on('disconnected', () => {
-          if (this.status === 'connected') {
-            this.setStatus('reconnecting')
-            try {
-              peer.reconnect()
-            } catch {
-              // reconnect attempt
-            }
-          }
+          if (this.peerInstance !== peer || this.isDestroyed) return
+          // When signaling drops, keep attempting reconnection in the background
+          // so the host's peer ID / invite QR remains valid and peers can still connect.
+          this.scheduleSignalingReconnect()
         })
 
         peer.on('close', () => {
           if (this.peerInstance !== peer) return
           cleanupSignalingTimeout()
+          this.stopSignalingReconnect()
           this.disconnect()
         })
       } catch (err) {
@@ -252,6 +307,33 @@ export class PeerJSTransport implements ITransport {
         reject(error)
       }
     })
+  }
+
+  private scheduleSignalingReconnect(): void {
+    if (this.isDestroyed || !this.peerInstance || this.peerInstance.destroyed) return
+    this.stopSignalingReconnect()
+
+    const attemptReconnect = () => {
+      if (this.isDestroyed || !this.peerInstance || this.peerInstance.destroyed) return
+      if (this.peerInstance.disconnected) {
+        try {
+          this.peerInstance.reconnect()
+        } catch {
+          // If reconnect threw synchronously, catch and retry later
+        }
+        // Reschedule in case signaling is still disconnected
+        this.signalingReconnectTimer = setTimeout(attemptReconnect, 2500)
+      }
+    }
+
+    attemptReconnect()
+  }
+
+  private stopSignalingReconnect(): void {
+    if (this.signalingReconnectTimer) {
+      clearTimeout(this.signalingReconnectTimer)
+      this.signalingReconnectTimer = null
+    }
   }
 
   private setupConnection(
@@ -366,6 +448,7 @@ export class PeerJSTransport implements ITransport {
   public async retryConnect(): Promise<string> {
     this.stopHeartbeat()
     this.stopConnectionTimeout()
+    this.stopSignalingReconnect()
     const previousPeer = this.peerInstance
     const previousConnection = this.connection
     this.peerInstance = null
@@ -392,6 +475,7 @@ export class PeerJSTransport implements ITransport {
     this.isDestroyed = true
     this.stopHeartbeat()
     this.stopConnectionTimeout()
+    this.stopSignalingReconnect()
 
     const prevRemote = this.remotePlayerId
     this.setStatus('closed')
@@ -468,22 +552,26 @@ export class PeerJSTransport implements ITransport {
   private setStatus(newStatus: TransportStatus): void {
     if (this.status === newStatus) return
     this.status = newStatus
-    this.statusHandlers.forEach((h) => h(newStatus))
+    this.notifyStatus(newStatus)
   }
 
   private notifyMessage(message: TransportMessage): void {
-    this.messageHandlers.forEach((h) => h(message))
+    this.messageHandlers.forEach((handler) => handler(message))
+  }
+
+  private notifyStatus(status: TransportStatus): void {
+    this.statusHandlers.forEach((handler) => handler(status))
   }
 
   private notifyPlayerJoin(playerId: string): void {
-    this.playerJoinHandlers.forEach((h) => h(playerId))
+    this.playerJoinHandlers.forEach((handler) => handler(playerId))
   }
 
   private notifyPlayerLeave(playerId: string): void {
-    this.playerLeaveHandlers.forEach((h) => h(playerId))
+    this.playerLeaveHandlers.forEach((handler) => handler(playerId))
   }
 
   private notifyError(error: Error): void {
-    this.errorHandlers.forEach((h) => h(error))
+    this.errorHandlers.forEach((handler) => handler(error))
   }
 }

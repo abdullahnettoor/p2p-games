@@ -19,10 +19,17 @@ class MockPeer extends EventEmitter {
   public id: string
   public disconnected = false
   public destroyed = false
+  public options: any
 
-  constructor(id?: string) {
+  constructor(idOrOptions?: string | any, options?: any) {
     super()
-    this.id = id || `peer-${Math.random().toString(36).substring(2, 7)}`
+    if (typeof idOrOptions === 'string') {
+      this.id = idOrOptions
+      this.options = options
+    } else {
+      this.id = `peer-${Math.random().toString(36).substring(2, 7)}`
+      this.options = idOrOptions
+    }
     setTimeout(() => {
       this.emit('open', this.id)
     }, 5)
@@ -49,6 +56,13 @@ class MockPeer extends EventEmitter {
     this.disconnected = true
     this.emit('disconnected', this.id)
   }
+
+  reconnect = vi.fn(() => {
+    this.disconnected = false
+    setTimeout(() => {
+      this.emit('open', this.id)
+    }, 5)
+  })
 }
 
 vi.mock('peerjs', () => {
@@ -57,7 +71,7 @@ vi.mock('peerjs', () => {
   }
 })
 
-import { PeerJSTransport } from './PeerJSTransport'
+import { PeerJSTransport, configuredSignalingServer } from './PeerJSTransport'
 
 describe('PeerJSTransport Connection Lifecycle', () => {
   beforeEach(() => {
@@ -174,6 +188,101 @@ describe('PeerJSTransport Connection Lifecycle', () => {
 
     guest.disconnect()
     vi.useRealTimers()
+  })
+})
+
+describe('PeerJSTransport signaling auto-reconnect & configuration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('automatically reconnects when signaling disconnects while waiting in lobby', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    const hostId = await host.connect()
+
+    const peer = (host as any).peerInstance as MockPeer
+    expect(peer).toBeTruthy()
+
+    // Host is in lobby ('connecting')
+    expect(host.status).toBe('connecting')
+
+    // Simulate signaling server dropping the socket
+    peer.disconnect()
+
+    // PeerJSTransport should immediately invoke reconnect
+    expect(peer.reconnect).toHaveBeenCalled()
+    expect(host.localPlayerId).toBe(hostId)
+
+    host.disconnect()
+  })
+
+  it('preserves connected match status when signaling drops during active game', async () => {
+    const host = new PeerJSTransport({ role: 'host' })
+    await host.connect()
+
+    const conn = new MockDataConnection('guest-xyz', true)
+    ;(host as any).peerInstance.emit('connection', conn)
+    expect(host.status).toBe('connected')
+
+    const peer = (host as any).peerInstance as MockPeer
+    // Simulate signaling socket drop
+    peer.disconnect()
+
+    // P2P game status remains 'connected' while peer signaling reconnects
+    expect(host.status).toBe('connected')
+    expect(peer.reconnect).toHaveBeenCalled()
+
+    host.disconnect()
+  })
+
+  it('passes custom signalingServer options to Peer constructor', async () => {
+    const customConfig = {
+      host: 'signaling.mygame.com',
+      port: 9000,
+      path: '/peerjs',
+      secure: true,
+      pingInterval: 10000,
+    }
+    const transport = new PeerJSTransport({
+      role: 'host',
+      signalingServer: customConfig,
+    })
+
+    await transport.connect()
+    const peer = (transport as any).peerInstance as MockPeer
+
+    expect(peer.options).toMatchObject({
+      host: 'signaling.mygame.com',
+      port: 9000,
+      path: '/peerjs',
+      secure: true,
+      pingInterval: 10000,
+    })
+
+    transport.disconnect()
+  })
+
+  it('reads signaling configuration from NEXT_PUBLIC_PEER_* environment variables', () => {
+    const originalEnv = { ...process.env }
+    try {
+      process.env.NEXT_PUBLIC_PEER_HOST = 'custom-peer.internal'
+      process.env.NEXT_PUBLIC_PEER_PORT = '8443'
+      process.env.NEXT_PUBLIC_PEER_PATH = '/custom-path'
+      process.env.NEXT_PUBLIC_PEER_SECURE = 'false'
+      process.env.NEXT_PUBLIC_PEER_PING_INTERVAL_MS = '7000'
+
+      const config = configuredSignalingServer()
+      expect(config).toEqual({
+        host: 'custom-peer.internal',
+        port: 8443,
+        path: '/custom-path',
+        secure: false,
+        pingInterval: 7000,
+        key: undefined,
+      })
+    } finally {
+      process.env = originalEnv
+    }
   })
 })
 
