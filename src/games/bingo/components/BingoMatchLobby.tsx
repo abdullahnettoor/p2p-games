@@ -6,6 +6,7 @@ import { LobbySession } from '@/core/lobby/LobbySession'
 import { useLobby } from '@/core/lobby/useLobby'
 import { extractRoomCode } from '@/core/lobby/roomCode'
 import { BingoBoard } from '../types'
+import type { StrangerSearchState } from './BingoOnlineGame'
 import { BingoBoardSetup } from './BingoBoardSetup'
 import { BingoBoardView } from './BingoBoardView'
 import { BingoSoundToggle } from './BingoSoundToggle'
@@ -32,8 +33,16 @@ export interface BingoMatchLobbyProps {
   onExit?: () => void
   onJoinRoomCode?: (code: string) => void
   onPlayStranger?: () => void
+  onCancelStranger?: () => void
+  strangerSearch?: StrangerSearchState
   isStrangerMatch?: boolean
   className?: string
+}
+
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
 }
 
 type InviteFeedback = 'idle' | 'shared' | 'copied' | 'error'
@@ -43,6 +52,8 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   onExit,
   onJoinRoomCode,
   onPlayStranger,
+  onCancelStranger,
+  strangerSearch = { status: 'idle' },
   isStrangerMatch = false,
   className,
 }) => {
@@ -56,6 +67,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   const [qrError, setQrError] = useState(false)
   const [showJoinInput, setShowJoinInput] = useState(false)
   const [inputRoomCode, setInputRoomCode] = useState('')
+  const [joinCodeError, setJoinCodeError] = useState<string | null>(null)
   const qrTriggerRef = useRef<HTMLButtonElement>(null)
   const qrCloseButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -103,7 +115,17 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   const handleJoinByCode = (e: React.FormEvent) => {
     e.preventDefault()
     const code = extractRoomCode(inputRoomCode)
-    if (!code) return
+    if (!code) {
+      setJoinCodeError('Enter the 6-character room code.')
+      return
+    }
+    if (code === state.roomCode) {
+      setJoinCodeError('That is your own room code. Share it with your friend.')
+      return
+    }
+    setJoinCodeError(null)
+    setShowJoinInput(false)
+    setInputRoomCode('')
     if (onJoinRoomCode) {
       onJoinRoomCode(code)
       return
@@ -274,18 +296,33 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
 
         {!isRemoteConnected && !isStrangerMatch && onPlayStranger ? (
           <div className={styles.strangerSection}>
-            <button
-              type="button"
-              onClick={onPlayStranger}
-              className={styles.strangerButton}
-            >
-              <Users className="h-4 w-4" aria-hidden="true" />
-              <span>Play with a stranger</span>
-            </button>
+            {strangerSearch.status === 'searching' ? (
+              <div className={styles.strangerSearching} role="status" aria-live="polite">
+                <span className={styles.strangerButton} data-searching="true" aria-disabled="true">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  <span>Searching for a stranger… {formatElapsed(strangerSearch.elapsedSeconds)}</span>
+                </span>
+                <button type="button" onClick={onCancelStranger} className={styles.strangerCancel}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <>
+                <button type="button" onClick={onPlayStranger} className={styles.strangerButton}>
+                  <Users className="h-4 w-4" aria-hidden="true" />
+                  <span>{strangerSearch.status === 'timeout' ? 'No one found · Search again' : 'Play with a stranger'}</span>
+                </button>
+                {strangerSearch.status === 'timeout' ? (
+                  <p className={styles.strangerHint} role="status">
+                    No other player is searching right now. Keep your room open for a friend, or search again.
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
 
-        {!isHost && !isRemoteConnected && !isStrangerMatch ? (
+        {!isRemoteConnected && !isStrangerMatch ? (
           <div className={styles.joinCodeSection}>
             {!showJoinInput ? (
               <button
@@ -293,7 +330,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
                 onClick={() => setShowJoinInput(true)}
                 className={styles.joinCodeToggle}
               >
-                Join another room with a code
+                {isHost ? 'Have a code? Join a friend’s room' : 'Join another room with a code'}
               </button>
             ) : (
               <form onSubmit={handleJoinByCode} className={styles.joinCodeForm}>
@@ -302,9 +339,14 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
                   id="room-code-input"
                   type="text"
                   placeholder="CODE"
-                  maxLength={8}
+                  maxLength={6}
+                  autoCapitalize="characters"
+                  autoComplete="off"
                   value={inputRoomCode}
-                  onChange={(e) => setInputRoomCode(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setInputRoomCode(e.target.value.toUpperCase())
+                    setJoinCodeError(null)
+                  }}
                   className={styles.joinCodeInput}
                   autoFocus
                 />
@@ -313,7 +355,10 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowJoinInput(false)}
+                  onClick={() => {
+                    setShowJoinInput(false)
+                    setJoinCodeError(null)
+                  }}
                   className={styles.rulesClose}
                   style={{ minWidth: '2rem', minHeight: '2rem', padding: '0.2rem' }}
                   aria-label="Cancel entering room code"
@@ -322,6 +367,7 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
                 </button>
               </form>
             )}
+            {joinCodeError ? <p className={styles.inviteFeedback} data-error="true" role="alert">{joinCodeError}</p> : null}
           </div>
         ) : null}
 

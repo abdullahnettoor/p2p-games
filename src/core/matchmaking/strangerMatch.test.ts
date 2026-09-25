@@ -49,6 +49,8 @@ class MockSimulatedTransport implements ITransport {
   public targetPeerId?: string
   public rejectExtraConnections: boolean
   public isRegistered = false
+  /** Simulated time for a guest's DataChannel to open after signaling. */
+  public pairDelayMs: number
 
   private broker: MockBroker
   private partner: MockSimulatedTransport | null = null
@@ -65,8 +67,10 @@ class MockSimulatedTransport implements ITransport {
       localPlayerId?: string
       targetPeerId?: string
       rejectExtraConnections?: boolean
-    }
+    },
+    pairDelayMs = 0
   ) {
+    this.pairDelayMs = pairDelayMs
     this.broker = broker
     this.role = options.role
     this.localPlayerId = options.localPlayerId ?? `peer-${Math.random().toString(36).substring(2, 7)}`
@@ -97,6 +101,11 @@ class MockSimulatedTransport implements ITransport {
       })
       this.notifyError(err)
       throw err
+    }
+
+    if (this.pairDelayMs > 0) {
+      await new Promise((r) => setTimeout(r, this.pairDelayMs))
+      if (this.status !== 'connecting') return this.localPlayerId
     }
 
     // Check if host rejects extra guests
@@ -390,6 +399,42 @@ describe('StrangerMatchmaker', () => {
 
     res1.transport.disconnect()
     res2.transport.disconnect()
+  })
+
+  it('re-scan probes wait the full probe timeout for a slow connection', async () => {
+    vi.useFakeTimers()
+    try {
+      const options = {
+        gameId: 'bingo',
+        slotCount: 2,
+        probeTimeoutMs: 8000,
+        recheckIntervalMs: 30,
+        searchTimeoutMs: 60_000,
+      }
+      // Probes take 5s to open, longer than the old 3s re-scan cap.
+      const p1 = new StrangerMatchmaker({
+        ...options,
+        randomFn: () => 0.99,
+        createTransport: (opts) => new MockSimulatedTransport(broker, opts, 5000),
+      })
+      const p2 = new StrangerMatchmaker({
+        ...options,
+        randomFn: () => 0.0,
+        createTransport: (opts) => new MockSimulatedTransport(broker, opts, 5000),
+      })
+
+      const both = Promise.all([p1.findMatch(), p2.findMatch()])
+      await vi.advanceTimersByTimeAsync(40_000)
+      const [res1, res2] = await both
+
+      expect(res1.role).toBe('host')
+      expect(res2.role).toBe('guest')
+      expect(res2.remotePeerId).toBe(res1.localPeerId)
+      res1.transport.disconnect()
+      res2.transport.disconnect()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('cancels search cleanly and tears down transport', async () => {

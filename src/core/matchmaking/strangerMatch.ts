@@ -282,7 +282,7 @@ export class StrangerMatchmaker {
 
       probeTimer = setTimeout(() => {
         finish(null)
-      }, Math.min(this.probeTimeoutMs, 3000))
+      }, this.probeTimeoutMs)
 
       guest.onError(() => {
         finish(null)
