@@ -230,8 +230,11 @@ export class PeerJSTransport implements ITransport {
             if (this.peerInstance !== peer) return
             if (this.role === 'host') {
               if (
+                // Only an open connection makes the host full. A half-open one
+                // may belong to a joiner who already gave up, so a newer joiner
+                // replaces it (setupConnection closes the old one).
                 this.rejectExtraConnections &&
-                (this.connection !== null || this.status === 'connected')
+                this.status === 'connected'
               ) {
                 const sendReject = () => {
                   try {
@@ -579,10 +582,23 @@ export class PeerJSTransport implements ITransport {
   private startConnectionTimeout(): void {
     this.stopConnectionTimeout()
     this.connectionTimeoutTimer = setTimeout(() => {
-      if (this.status !== 'connected') {
-        const timeoutError = new Error(ICE_FAILURE_MESSAGE)
-        this.notifyError(timeoutError)
+      this.connectionTimeoutTimer = null
+      if (this.status === 'connected') return
+
+      // A stranger host keeps waiting on its slot: drop the stalled joiner
+      // instead of reporting an error that would make it give the slot up.
+      if (this.isStrangerMatch && this.role === 'host') {
+        const stalled = this.connection
+        this.connection = null
+        try {
+          stalled?.close()
+        } catch {
+          // Safe ignore
+        }
+        return
       }
+
+      this.notifyError(new Error(ICE_FAILURE_MESSAGE))
     }, CONNECTION_TIMEOUT_MS)
   }
 

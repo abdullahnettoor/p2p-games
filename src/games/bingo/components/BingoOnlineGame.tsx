@@ -12,48 +12,68 @@ import {
 import { StrangerMatchmaker, StrangerMatchResult } from '@/core/matchmaking/strangerMatch'
 import { BingoBoard } from '../types'
 import { validateBingoBoard } from '../engine'
+import { BingoChoiceScreen } from './BingoChoiceScreen'
+import { BingoJoinCodeScreen } from './BingoJoinCodeScreen'
+import { BingoStrangerSearchScreen } from './BingoStrangerSearchScreen'
 import { BingoMatchLobby } from './BingoMatchLobby'
 import { BingoMatchplay } from './BingoMatchplay'
 import { BingoMatchCoordinator } from '../state/BingoMatchCoordinator'
 import { PlayerRole } from '@/core/games/types'
-import lobbyStyles from './BingoMatchLobby.module.css'
 import '../bingoTokens.css'
 
+export type BingoScreen =
+  | 'choice'
+  | 'create-room'
+  | 'join-code'
+  | 'guest-lobby'
+  | 'stranger-search'
+  | 'stranger-lobby'
+
 export interface BingoOnlineGameProps {
-  role: PlayerRole
-  matchId?: string
+  initialAction?: 'create' | null
+  initialRoomCode?: string | null
   initialPlayerName?: string
   onExit: () => void
 }
 
-type ScreenMode = 'lobby' | 'searching' | 'timeout'
-
-interface ScreenState {
-  mode: ScreenMode
-  elapsedSeconds?: number
-}
-
-function formatElapsed(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+function updateBrowserUrl(url: string) {
+  if (typeof window !== 'undefined') {
+    window.history.replaceState(null, '', url)
+  }
 }
 
 export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
-  role,
-  matchId,
+  initialAction = null,
+  initialRoomCode = null,
   initialPlayerName,
   onExit,
 }) => {
-  const [screenState, setScreenState] = useState<ScreenState>({ mode: 'lobby' })
+  const getInitialScreen = (): BingoScreen => {
+    if (initialRoomCode) return 'guest-lobby'
+    if (initialAction === 'create') return 'create-room'
+    return 'choice'
+  }
+
+  const [screen, setScreen] = useState<BingoScreen>(getInitialScreen)
   const [isStrangerMatch, setIsStrangerMatch] = useState(false)
   const [matchCoordinator, setMatchCoordinator] = useState<BingoMatchCoordinator | null>(null)
+  const [strangerStatus, setStrangerStatus] = useState<'searching' | 'timeout' | 'error'>('searching')
+  const [strangerError, setStrangerError] = useState<string | null>(null)
+  const [strangerElapsed, setStrangerElapsed] = useState(0)
+  const [joinCodeError, setJoinCodeError] = useState<string | null>(null)
 
   const activeRef = useRef(true)
   const lobbyRef = useRef<LobbyCoordinator<BingoBoard> | null>(null)
   const matchCoordinatorRef = useRef<BingoMatchCoordinator | null>(null)
   const strangerMatchmakerRef = useRef<StrangerMatchmaker | null>(null)
   const searchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const clearSearchTimer = () => {
+    if (searchIntervalRef.current) {
+      clearInterval(searchIntervalRef.current)
+      searchIntervalRef.current = null
+    }
+  }
 
   const createFriendLobby = useCallback(
     (lobbyRole: PlayerRole, targetMatchId?: string) => {
@@ -144,115 +164,26 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     return lobby
   }, [])
 
-  const [lobbyCoordinator, setLobbyCoordinator] = useState<LobbyCoordinator<BingoBoard>>(() => {
-    return createFriendLobby(role, matchId)
+  const [lobbyCoordinator, setLobbyCoordinator] = useState<LobbyCoordinator<BingoBoard> | null>(() => {
+    if (initialRoomCode) {
+      return createFriendLobby('guest', initialRoomCode)
+    }
+    if (initialAction === 'create') {
+      return createFriendLobby('host')
+    }
+    return null
   })
 
   matchCoordinatorRef.current = matchCoordinator
 
-  // Cleanup helper
-  const clearSearchTimer = () => {
-    if (searchIntervalRef.current) {
-      clearInterval(searchIntervalRef.current)
-      searchIntervalRef.current = null
-    }
-  }
-
-  // Cancel stranger search and return to normal friend lobby
-  const returnToFriendLobby = useCallback(() => {
-    clearSearchTimer()
-    if (strangerMatchmakerRef.current) {
-      const matchmaker = strangerMatchmakerRef.current
-      strangerMatchmakerRef.current = null
-      matchmaker.cancel()
-    }
-    if (lobbyRef.current) {
-      lobbyRef.current.destroy()
-      lobbyRef.current = null
-    }
-    setIsStrangerMatch(false)
-    setScreenState({ mode: 'lobby' })
-    const friendLobby = createFriendLobby(role, matchId)
-    setLobbyCoordinator(friendLobby)
-  }, [createFriendLobby, matchId, role])
-
-  // Start stranger search flow
-  const startStrangerSearch = useCallback(async () => {
-    clearSearchTimer()
-
-    // Destroy active friend lobby
-    if (lobbyRef.current) {
-      lobbyRef.current.destroy()
-      lobbyRef.current = null
-    }
-
-    setScreenState({ mode: 'searching', elapsedSeconds: 0 })
-    setIsStrangerMatch(true)
-
-    // Start elapsed seconds counter
-    searchIntervalRef.current = setInterval(() => {
-      setScreenState((prev) => {
-        if (prev.mode !== 'searching') return prev
-        return { mode: 'searching', elapsedSeconds: (prev.elapsedSeconds ?? 0) + 1 }
-      })
-    }, 1000)
-
-    const matchmaker = new StrangerMatchmaker({
-      gameId: 'bingo',
-    })
-    strangerMatchmakerRef.current = matchmaker
-
-    try {
-      const matchResult = await matchmaker.findMatch()
-      clearSearchTimer()
-      if (strangerMatchmakerRef.current === matchmaker) {
-        strangerMatchmakerRef.current = null
-      }
-
-      if (!activeRef.current) {
-        matchResult.transport.disconnect()
-        return
-      }
-
-      const strangerLobby = createStrangerLobby(matchResult)
-      setLobbyCoordinator(strangerLobby)
-      setScreenState({ mode: 'lobby' })
-    } catch (err) {
-      clearSearchTimer()
-      const status = matchmaker.status
-      if (strangerMatchmakerRef.current === matchmaker) {
-        strangerMatchmakerRef.current = null
-      }
-
-      if (!activeRef.current) return
-
-      if (status === 'timeout') {
-        setScreenState({ mode: 'timeout' })
-      } else if (status !== 'cancelled') {
-        returnToFriendLobby()
-      }
-    }
-  }, [createStrangerLobby, returnToFriendLobby])
-
-  // Start lobby coordinator on mount / when coordinator changes
+  // Lifecycle of lobbyCoordinator
   useEffect(() => {
+    if (!lobbyCoordinator) return
     activeRef.current = true
     lobbyRef.current = lobbyCoordinator
     lobbyCoordinator.start().catch(() => {})
 
-    const handleBeforeUnload = () => {
-      strangerMatchmakerRef.current?.cancel()
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-
     return () => {
-      activeRef.current = false
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      clearSearchTimer()
-      if (strangerMatchmakerRef.current) {
-        strangerMatchmakerRef.current.cancel()
-        strangerMatchmakerRef.current = null
-      }
       if (matchCoordinatorRef.current) {
         matchCoordinatorRef.current.destroy()
         matchCoordinatorRef.current = null
@@ -264,80 +195,193 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     }
   }, [lobbyCoordinator])
 
-  const handleExit = () => {
+  // Tear down on unmount or beforeunload
+  useEffect(() => {
+    activeRef.current = true
+    const handleBeforeUnload = () => {
+      strangerMatchmakerRef.current?.cancel()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      activeRef.current = false
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      clearSearchTimer()
+      strangerMatchmakerRef.current?.cancel()
+      strangerMatchmakerRef.current = null
+    }
+  }, [])
+
+  const handleCreateRoom = useCallback(() => {
+    clearSearchTimer()
+    strangerMatchmakerRef.current?.cancel()
+    strangerMatchmakerRef.current = null
+    setIsStrangerMatch(false)
+    setMatchCoordinator(null)
+    updateBrowserUrl('/bingo?action=create')
+    const lobby = createFriendLobby('host')
+    setLobbyCoordinator(lobby)
+    setScreen('create-room')
+  }, [createFriendLobby])
+
+  const handleOpenJoinCode = useCallback(() => {
+    setLobbyCoordinator(null)
+    setJoinCodeError(null)
+    setScreen('join-code')
+    updateBrowserUrl('/bingo')
+  }, [])
+
+  const handleJoinCodeSubmit = useCallback(
+    (cleanCode: string) => {
+      setIsStrangerMatch(false)
+      setMatchCoordinator(null)
+      updateBrowserUrl(`/bingo?room=${encodeURIComponent(cleanCode)}`)
+      const lobby = createFriendLobby('guest', cleanCode)
+      setLobbyCoordinator(lobby)
+      setScreen('guest-lobby')
+    },
+    [createFriendLobby]
+  )
+
+  const handleTryAnotherCode = useCallback(() => {
+    setLobbyCoordinator(null)
+    setJoinCodeError(null)
+    setScreen('join-code')
+    updateBrowserUrl('/bingo')
+  }, [])
+
+  const cancelStrangerSearch = useCallback(() => {
+    clearSearchTimer()
+    const matchmaker = strangerMatchmakerRef.current
+    strangerMatchmakerRef.current = null
+    matchmaker?.cancel()
+  }, [])
+
+  const startStrangerSearch = useCallback(async () => {
+    setLobbyCoordinator(null)
+    clearSearchTimer()
+    strangerMatchmakerRef.current?.cancel()
+    strangerMatchmakerRef.current = null
+
+    setStrangerStatus('searching')
+    setStrangerError(null)
+    setStrangerElapsed(0)
+    setScreen('stranger-search')
+    updateBrowserUrl('/bingo')
+
+    searchIntervalRef.current = setInterval(() => {
+      setStrangerElapsed((prev) => prev + 1)
+    }, 1000)
+
+    const matchmaker = new StrangerMatchmaker({ gameId: 'bingo' })
+    strangerMatchmakerRef.current = matchmaker
+
+    try {
+      const matchResult = await matchmaker.findMatch()
+      if (strangerMatchmakerRef.current !== matchmaker || !activeRef.current) {
+        matchResult.transport.disconnect()
+        return
+      }
+      strangerMatchmakerRef.current = null
+      clearSearchTimer()
+      setIsStrangerMatch(true)
+      setLobbyCoordinator(createStrangerLobby(matchResult))
+      setScreen('stranger-lobby')
+    } catch (err) {
+      if (strangerMatchmakerRef.current !== matchmaker) return
+      strangerMatchmakerRef.current = null
+      clearSearchTimer()
+      if (!activeRef.current) return
+      if (matchmaker.status === 'timeout') {
+        setStrangerStatus('timeout')
+        setStrangerError(null)
+      } else {
+        setStrangerStatus('error')
+        const message = err instanceof Error ? err.message : 'Matchmaking connection failed.'
+        setStrangerError(message)
+      }
+    }
+  }, [createStrangerLobby])
+
+  const handleCancelStrangerSearch = useCallback(() => {
+    cancelStrangerSearch()
+    setScreen('choice')
+    updateBrowserUrl('/bingo')
+  }, [cancelStrangerSearch])
+
+  const handleBackToChoice = useCallback(() => {
+    if (matchCoordinatorRef.current) {
+      matchCoordinatorRef.current.destroy()
+      matchCoordinatorRef.current = null
+      setMatchCoordinator(null)
+    }
+    setLobbyCoordinator(null)
+    cancelStrangerSearch()
+    setIsStrangerMatch(false)
+    setScreen('choice')
+    updateBrowserUrl('/bingo')
+  }, [cancelStrangerSearch])
+
+  const handleExit = useCallback(() => {
     if (matchCoordinatorRef.current) {
       matchCoordinatorRef.current.destroy()
       matchCoordinatorRef.current = null
     }
     onExit()
-  }
+  }, [onExit])
 
-  if (screenState.mode === 'searching') {
-    return (
-      <div className={lobbyStyles.lobbyContainer}>
-        <div className={lobbyStyles.searchingCard}>
-          <div className={lobbyStyles.searchingRadar}>
-            <div className={lobbyStyles.searchingIcon}>🎲</div>
-          </div>
-          <h2 className={lobbyStyles.searchingTitle}>Looking for a stranger…</h2>
-          <p className={lobbyStyles.searchingSubtitle}>
-            Scanning active slots for an open Bingo match.
-          </p>
-          <div className={lobbyStyles.elapsedPill}>
-            Time elapsed: {formatElapsed(screenState.elapsedSeconds ?? 0)}
-          </div>
-          <button
-            type="button"
-            className={lobbyStyles.cancelSearchButton}
-            onClick={returnToFriendLobby}
-          >
-            Cancel search
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (screenState.mode === 'timeout') {
-    return (
-      <div className={lobbyStyles.lobbyContainer}>
-        <div className={lobbyStyles.searchingCard}>
-          <div className={lobbyStyles.searchingIcon}>⏳</div>
-          <h2 className={lobbyStyles.searchingTitle}>No opponents found yet</h2>
-          <p className={lobbyStyles.searchingSubtitle}>
-            We couldn’t find another player searching right now. Would you like to keep waiting or invite a friend?
-          </p>
-          <div className={lobbyStyles.timeoutActions}>
-            <button
-              type="button"
-              className={lobbyStyles.keepWaitingButton}
-              onClick={startStrangerSearch}
-            >
-              Keep waiting
-            </button>
-            <button
-              type="button"
-              className={lobbyStyles.inviteFriendButton}
-              onClick={returnToFriendLobby}
-            >
-              Invite a friend instead
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
+  // Matchplay screen
   if (matchCoordinator) {
     return <BingoMatchplay coordinator={matchCoordinator} onExit={handleExit} />
   }
 
-  return (
-    <BingoMatchLobby
-      session={lobbyCoordinator}
-      onPlayStranger={startStrangerSearch}
-      isStrangerMatch={isStrangerMatch}
-      onExit={handleExit}
-    />
-  )
+  // 1. Choice screen
+  if (screen === 'choice') {
+    return (
+      <BingoChoiceScreen
+        onCreateRoom={handleCreateRoom}
+        onJoinWithCode={handleOpenJoinCode}
+        onPlayStranger={startStrangerSearch}
+        onExit={onExit}
+      />
+    )
+  }
+
+  // 2. Join with code input screen
+  if (screen === 'join-code') {
+    return (
+      <BingoJoinCodeScreen
+        onJoin={handleJoinCodeSubmit}
+        onBack={handleBackToChoice}
+        initialError={joinCodeError}
+      />
+    )
+  }
+
+  // 3. Stranger search screen
+  if (screen === 'stranger-search') {
+    return (
+      <BingoStrangerSearchScreen
+        status={strangerStatus}
+        errorMessage={strangerError}
+        elapsedSeconds={strangerElapsed}
+        onCancel={handleCancelStrangerSearch}
+        onSearchAgain={startStrangerSearch}
+        onCreateRoomInstead={handleCreateRoom}
+      />
+    )
+  }
+
+  // 4. Lobby (host, guest, or stranger)
+  if (lobbyCoordinator) {
+    return (
+      <BingoMatchLobby
+        session={lobbyCoordinator}
+        onExit={handleBackToChoice}
+        onTryAnotherCode={screen === 'guest-lobby' ? handleTryAnotherCode : undefined}
+        isStrangerMatch={isStrangerMatch}
+      />
+    )
+  }
+
+  return null
 }

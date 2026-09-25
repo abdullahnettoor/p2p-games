@@ -98,7 +98,7 @@ describe('BingoMatchLobby', () => {
       text: 'Join me for a BINGO Match.',
       url: session.state.inviteUrl,
     })
-    expect(screen.getByText('Invite shared')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Invite shared/i })).toBeInTheDocument()
   })
 
   it('copies the invite when native sharing is unavailable', async () => {
@@ -111,7 +111,7 @@ describe('BingoMatchLobby', () => {
     })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(session.state.inviteUrl)
-    expect(screen.getByText('Invite link copied')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Invite link copied/i })).toBeInTheDocument()
   })
 
   it('falls back to copying when native sharing fails', async () => {
@@ -124,7 +124,7 @@ describe('BingoMatchLobby', () => {
     })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(session.state.inviteUrl)
-    expect(screen.getByText('Invite link copied')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Invite link copied/i })).toBeInTheDocument()
   })
 
   it('shows an actionable fallback link when sharing and copying both fail', async () => {
@@ -260,7 +260,7 @@ describe('BingoMatchLobby', () => {
     session.state.roomCode = 'K7M4QX'
 
     render(<BingoMatchLobby session={session} />)
-    expect(screen.getByText('Room code:')).toBeInTheDocument()
+    expect(screen.getByText('Room:')).toBeInTheDocument()
     expect(screen.getByText('K7M4QX')).toBeInTheDocument()
   })
 
@@ -270,34 +270,45 @@ describe('BingoMatchLobby', () => {
 
     render(<BingoMatchLobby session={session} />)
     expect(screen.getByText(/Reconnecting…/i)).toBeInTheDocument()
-    expect(screen.getByText(/Reconnecting to matchmaking…/i)).toBeInTheDocument()
+    expect(screen.getByText(/Reconnecting signaling server…/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Show invite QR code' })).not.toBeInTheDocument()
   })
 
-  it('hides room code entry input for hosts', async () => {
+  it('host lobby shows room code and invite area without stranger or code-entry controls', async () => {
     const session = await createHostSession()
+    session.state.roomCode = 'HQST22'
     render(<BingoMatchLobby session={session} />)
-    expect(screen.queryByRole('button', { name: /Join another room with a code/i })).not.toBeInTheDocument()
+
+    expect(screen.getByText('HQST22')).toBeInTheDocument()
+    expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Play with a stranger/i })).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('CODE')).not.toBeInTheDocument()
   })
 
-  it('shows room code entry input for guests and navigates on submit', async () => {
+  it('renders "Try another code" button for guest when connection fails with error', async () => {
     const [, guestTransport] = createLoopbackTransportPair()
     const guestSession = new LobbySession<BingoBoard>({
       transport: guestTransport,
       playerName: 'GuestPlayer',
       validateSetup: (board) => validateBingoBoard(board).valid,
     })
-    const onJoinRoomCode = vi.fn()
+    const onTryAnotherCode = vi.fn()
 
-    render(<BingoMatchLobby session={guestSession} onJoinRoomCode={onJoinRoomCode} />)
-    const toggleButton = screen.getByRole('button', { name: /Join another room with a code/i })
-    fireEvent.click(toggleButton)
+    render(<BingoMatchLobby session={guestSession} onTryAnotherCode={onTryAnotherCode} />)
 
-    const input = screen.getByPlaceholderText('CODE')
-    fireEvent.change(input, { target: { value: 'k7m4qx' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+    act(() => {
+      ;(guestSession as any).state = {
+        ...(guestSession as any).state,
+        error: 'The match invite is no longer available.',
+      }
+      ;(guestSession as any).notify()
+    })
 
-    expect(onJoinRoomCode).toHaveBeenCalledWith('K7M4QX')
+    const tryAnotherCodeBtn = screen.getByRole('button', { name: 'Try another code' })
+    expect(tryAnotherCodeBtn).toBeInTheDocument()
+
+    fireEvent.click(tryAnotherCodeBtn)
+    expect(onTryAnotherCode).toHaveBeenCalledTimes(1)
   })
 
   it('closes QR modal when signaling drops into reconnecting or error', async () => {
@@ -316,18 +327,6 @@ describe('BingoMatchLobby', () => {
     })
 
     expect(screen.queryByRole('dialog', { name: 'Invite QR code' })).not.toBeInTheDocument()
-  })
-
-  it("renders Play with a stranger button when onPlayStranger is provided", async () => {
-    const session = await createHostSession()
-    const onPlayStranger = vi.fn()
-    render(<BingoMatchLobby session={session} onPlayStranger={onPlayStranger} />)
-
-    const strangerBtn = screen.getByRole("button", { name: /Play with a stranger/i })
-    expect(strangerBtn).toBeInTheDocument()
-
-    fireEvent.click(strangerBtn)
-    expect(onPlayStranger).toHaveBeenCalledTimes(1)
   })
 
   it("hides invite area and locks name input when isStrangerMatch is true", async () => {
