@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, Suspense } from 'react'
+import React, { Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { BingoOnlineGame } from '@/games/bingo/components/BingoOnlineGame'
 import { Loader2 } from 'lucide-react'
@@ -9,26 +9,20 @@ function BingoContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const matchParam = searchParams.get('room') || searchParams.get('match')
-  const [mode, setMode] = useState<'online-host' | 'online-guest'>(() => (
-    matchParam ? 'online-guest' : 'online-host'
-  ))
-
-  useEffect(() => {
-    setMode(matchParam ? 'online-guest' : 'online-host')
-  }, [matchParam])
+  const actionParam = searchParams.get('action')
 
   const handleExitToCatalog = () => {
-    setMode('online-host')
     router.replace('/')
   }
 
   return (
     <div className="gameRouteSurface">
-      {mode === 'online-host' ? (
-        <BingoOnlineGame key="host" role="host" onExit={handleExitToCatalog} />
-      ) : (
-        <BingoOnlineGame key={`guest:${matchParam ?? ''}`} role="guest" matchId={matchParam ?? undefined} onExit={handleExitToCatalog} />
-      )}
+      <BingoOnlineGame
+        key={`${actionParam ?? ''}:${matchParam ?? ''}`}
+        initialAction={actionParam === 'create' ? 'create' : null}
+        initialRoomCode={matchParam ?? null}
+        onExit={handleExitToCatalog}
+      />
     </div>
   )
 }

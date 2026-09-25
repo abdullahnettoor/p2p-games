@@ -4,9 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { LobbySession } from '@/core/lobby/LobbySession'
 import { useLobby } from '@/core/lobby/useLobby'
-import { extractRoomCode } from '@/core/lobby/roomCode'
 import { BingoBoard } from '../types'
-import type { StrangerSearchState } from './BingoOnlineGame'
 import { BingoBoardSetup } from './BingoBoardSetup'
 import { BingoBoardView } from './BingoBoardView'
 import { BingoSoundToggle } from './BingoSoundToggle'
@@ -19,11 +17,9 @@ import {
   CircleHelp,
   Copy,
   QrCode,
-  Loader2,
   Pencil,
   RotateCcw,
   Share2,
-  Users,
   X,
 } from 'lucide-react'
 import styles from './BingoMatchLobby.module.css'
@@ -31,18 +27,9 @@ import styles from './BingoMatchLobby.module.css'
 export interface BingoMatchLobbyProps {
   session: LobbySession<BingoBoard>
   onExit?: () => void
-  onJoinRoomCode?: (code: string) => void
-  onPlayStranger?: () => void
-  onCancelStranger?: () => void
-  strangerSearch?: StrangerSearchState
+  onTryAnotherCode?: () => void
   isStrangerMatch?: boolean
   className?: string
-}
-
-function formatElapsed(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${String(s).padStart(2, '0')}`
 }
 
 type InviteFeedback = 'idle' | 'shared' | 'copied' | 'error'
@@ -50,10 +37,7 @@ type InviteFeedback = 'idle' | 'shared' | 'copied' | 'error'
 export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   session,
   onExit,
-  onJoinRoomCode,
-  onPlayStranger,
-  onCancelStranger,
-  strangerSearch = { status: 'idle' },
+  onTryAnotherCode,
   isStrangerMatch = false,
   className,
 }) => {
@@ -65,9 +49,6 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
   const [showQr, setShowQr] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [qrError, setQrError] = useState(false)
-  const [showJoinInput, setShowJoinInput] = useState(false)
-  const [inputRoomCode, setInputRoomCode] = useState('')
-  const [joinCodeError, setJoinCodeError] = useState<string | null>(null)
   const qrTriggerRef = useRef<HTMLButtonElement>(null)
   const qrCloseButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -112,29 +93,6 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
     }
   }
 
-  const handleJoinByCode = (e: React.FormEvent) => {
-    e.preventDefault()
-    const code = extractRoomCode(inputRoomCode)
-    if (!code) {
-      setJoinCodeError('Enter the 6-character room code.')
-      return
-    }
-    if (code === state.roomCode) {
-      setJoinCodeError('That is your own room code. Share it with your friend.')
-      return
-    }
-    setJoinCodeError(null)
-    setShowJoinInput(false)
-    setInputRoomCode('')
-    if (onJoinRoomCode) {
-      onJoinRoomCode(code)
-      return
-    }
-    if (typeof window !== 'undefined') {
-      window.location.assign(`/bingo?room=${encodeURIComponent(code)}`)
-    }
-  }
-
   useEffect(() => {
     if (state.isReconnecting || state.error) {
       setShowQr(false)
@@ -143,72 +101,92 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
 
   useEffect(() => {
     if (!showQr || !state.inviteUrl) return
-
-    let cancelled = false
-    setQrDataUrl(null)
+    let active = true
     setQrError(false)
-    QRCode.toString(state.inviteUrl, { type: 'svg', width: 280, margin: 2 })
-      .then((svg) => {
-        if (!cancelled) setQrDataUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`)
+
+    QRCode.toDataURL(state.inviteUrl, {
+      width: 280,
+      margin: 2,
+      color: {
+        dark: '#27313A',
+        light: '#FFFFFF',
+      },
+    })
+      .then((dataUrl) => {
+        if (active) setQrDataUrl(dataUrl)
       })
       .catch(() => {
-        if (!cancelled) setQrError(true)
+        if (active) setQrError(true)
       })
 
     return () => {
-      cancelled = true
+      active = false
     }
   }, [showQr, state.inviteUrl])
 
   useEffect(() => {
-    if (!showQr) return
+    if (!showQr && !showRules) return
 
-    qrCloseButtonRef.current?.focus()
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowQr(false)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowQr(false)
+        setShowRules(false)
+      }
     }
-    document.addEventListener('keydown', handleEscape)
 
-    return () => {
-      document.removeEventListener('keydown', handleEscape)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [showQr, showRules])
+
+  useEffect(() => {
+    if (showQr) {
+      qrCloseButtonRef.current?.focus()
+    } else {
       qrTriggerRef.current?.focus()
     }
   }, [showQr])
-
-  const handleBoardReady = (board: BingoBoard) => {
-    updateBoardSetup(board)
-    setReady(true)
-  }
 
   const handleRetry = async () => {
     setInviteFeedback('idle')
     await session.retry()
   }
 
+  const handleBoardReady = (board: BingoBoard) => {
+    updateBoardSetup(board)
+    setReady(true)
+  }
+
+  const inviteActionCopy = inviteFeedback === 'copied'
+    ? 'Invite link copied'
+    : inviteFeedback === 'shared'
+      ? 'Invite shared'
+      : inviteFeedback === 'error'
+        ? 'Copy failed'
+        : 'Share invite link'
+
   const connectionCopy = state.error && !isHost
     ? `Connection failed · ${state.error}`
-    : isStrangerMatch
-      ? !isRemoteConnected
-        ? 'Matching with a stranger…'
-        : isRemoteReady
-          ? 'Connected with a stranger · both players are arranging'
-          : 'Connected with a stranger · opponent is arranging'
-      : !isRemoteConnected
-        ? state.localPlayer.role === 'host' ? 'Waiting for a friend to join' : 'Connecting to the Host'
-        : isRemoteReady
-          ? 'Connected · both Players are arranging'
-          : 'Connected · your friend is arranging'
+    : isRemoteConnected
+      ? isStrangerMatch
+        ? 'Connected with a stranger · both players are arranging'
+        : 'Friend connected · both players are arranging'
+      : isStrangerMatch
+        ? 'Searching for stranger…'
+        : 'Waiting for a friend to join'
 
   return (
     <div className={cn('bingoTokenScope', styles.lobbySurface, className)}>
       <div className={styles.lobbyInner}>
         <header className={styles.utilityBar}>
-          {onExit ? (
-            <button type="button" onClick={onExit} className={styles.utilityButton}>
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-              <span>Exit</span>
-            </button>
-          ) : <span aria-hidden="true" />}
+          <button
+            type="button"
+            onClick={onExit}
+            className={styles.utilityButton}
+            aria-label="Back to menu"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <span>Back</span>
+          </button>
           <h1 className={styles.shellTitle}>BINGO</h1>
           <div className={styles.utilityGroup}>
             <BingoSoundToggle isMuted={isMuted} onToggle={toggleMute} />
@@ -226,157 +204,150 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
         </header>
 
         {isHost && !isStrangerMatch ? (
-          <section className={styles.inviteArea} aria-label="Match invite">
-            <div
-              data-ready={state.inviteUrl && !state.isReconnecting ? 'true' : 'false'}
-              data-reconnecting={state.isReconnecting ? 'true' : 'false'}
-              data-error={state.error ? 'true' : 'false'}
+          <div className={styles.inviteArea}>
+            <section
               className={styles.invitePill}
+              aria-label="Match invite"
+              data-ready={Boolean(state.inviteUrl)}
+              data-error={Boolean(state.error)}
+              data-reconnecting={Boolean(state.isReconnecting)}
             >
-              <span className={styles.inviteCopy}>
-                <span className={styles.inviteLabel}>
-                  {state.error
-                    ? 'Invite needs attention'
-                    : state.isReconnecting
-                      ? 'Reconnecting…'
-                      : state.inviteUrl
-                        ? 'Invite a friend'
-                        : 'Preparing invite'}
-                </span>
+              <div className={styles.inviteCopy}>
+                <span className={styles.inviteLabel}>Match invite</span>
                 <span className={styles.inviteReason}>
                   {state.error
                     ? state.error
                     : state.isReconnecting
-                      ? 'Reconnecting to matchmaking… Your invite link will resume automatically.'
+                      ? 'Reconnecting signaling server…'
                       : state.inviteUrl
-                        ? 'Share the link, code, or show a QR code.'
-                        : 'You can arrange your Board while the Match opens.'}
+                        ? 'Invite ready for your friend'
+                        : 'Preparing invite'}
                 </span>
-              </span>
+                {state.roomCode ? (
+                  <div className={styles.roomCodeSnippet}>
+                    <span>Room:</span>
+                    <strong className={styles.roomCodeValue}>{state.roomCode}</strong>
+                  </div>
+                ) : null}
+              </div>
+
               {state.error ? (
-                <button type="button" onClick={handleRetry} aria-label="Retry invite connection" className={styles.inviteActionButton}>
-                  <RotateCcw className="mr-1 inline h-4 w-4" aria-hidden="true" />Try again
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className={styles.inviteActionButton}
+                  aria-label="Retry invite connection"
+                >
+                  <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                  Retry
                 </button>
               ) : state.isReconnecting ? (
-                <button type="button" disabled aria-label="Reconnecting to matchmaking" className={styles.inviteStateButton}>
-                  <Loader2 className="h-4 w-4 animate-spin text-amber-500" aria-hidden="true" />
+                <button
+                  type="button"
+                  disabled
+                  className={styles.inviteStateButton}
+                  aria-label="Reconnecting signaling server"
+                >
+                  Reconnecting…
                 </button>
               ) : state.inviteUrl ? (
-                <span className={styles.inviteActions} aria-label="Invite actions">
-                  <button type="button" onClick={handleShareInvite} aria-label="Share invite link" className={styles.inviteIconButton}>
-                    <Share2 className="h-4 w-4" aria-hidden="true" />
+                <div className={styles.inviteActions}>
+                  <button
+                    type="button"
+                    onClick={handleShareInvite}
+                    className={styles.inviteActionButton}
+                    aria-label={inviteActionCopy}
+                  >
+                    {inviteFeedback === 'copied' || inviteFeedback === 'shared' ? (
+                      <Check className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <Share2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    {inviteActionCopy}
                   </button>
-                  <button ref={qrTriggerRef} type="button" onClick={() => setShowQr(true)} aria-label="Show invite QR code" className={styles.inviteIconButton}>
+                  <button
+                    ref={qrTriggerRef}
+                    type="button"
+                    onClick={() => setShowQr(true)}
+                    className={styles.inviteIconButton}
+                    aria-label="Show invite QR code"
+                    aria-haspopup="dialog"
+                    aria-expanded={showQr}
+                  >
                     <QrCode className="h-4 w-4" aria-hidden="true" />
                   </button>
-                </span>
+                </div>
               ) : (
-                <button type="button" disabled aria-label="Preparing invite" className={styles.inviteStateButton}>
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <button
+                  type="button"
+                  disabled
+                  className={styles.inviteStateButton}
+                  aria-label="Preparing invite link"
+                >
+                  Preparing…
                 </button>
               )}
-            </div>
+            </section>
 
-            {state.roomCode && !state.isReconnecting && !state.error ? (
-              <div className={styles.roomCodeSnippet}>
-                <span>Room code:</span>
-                <strong className={styles.roomCodeValue}>{state.roomCode}</strong>
-              </div>
-            ) : null}
-
-            {inviteFeedback === 'shared' ? <p className={styles.inviteFeedback} role="status"><Check className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Invite shared</p> : null}
-            {inviteFeedback === 'copied' ? <p className={styles.inviteFeedback} role="status"><Copy className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Invite link copied</p> : null}
-            {inviteFeedback === 'error' ? (
+            {inviteFeedback === 'error' && state.inviteUrl ? (
               <p className={styles.inviteFeedback} data-error="true" role="alert">
-                Could not share automatically. Copy this invite link: <a className={styles.inviteLink} href={state.inviteUrl ?? undefined}>{state.inviteUrl}</a>
+                Could not share automatically. Share this link directly:{' '}
+                <a href={state.inviteUrl} className={styles.inviteLink}>
+                  {state.inviteUrl}
+                </a>
               </p>
             ) : null}
-          </section>
-        ) : null}
 
-        {!isRemoteConnected && !isStrangerMatch && onPlayStranger ? (
-          <div className={styles.strangerSection}>
-            {strangerSearch.status === 'searching' ? (
-              <div className={styles.strangerSearching} role="status" aria-live="polite">
-                <span className={styles.strangerButton} data-searching="true" aria-disabled="true">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  <span>Searching for a stranger… {formatElapsed(strangerSearch.elapsedSeconds)}</span>
-                </span>
-                <button type="button" onClick={onCancelStranger} className={styles.strangerCancel}>
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <>
-                <button type="button" onClick={onPlayStranger} className={styles.strangerButton}>
-                  <Users className="h-4 w-4" aria-hidden="true" />
-                  <span>{strangerSearch.status === 'timeout' ? 'No one found · Search again' : 'Play with a stranger'}</span>
-                </button>
-                {strangerSearch.status === 'timeout' ? (
-                  <p className={styles.strangerHint} role="status">
-                    No other player is searching right now. Keep your room open for a friend, or search again.
-                  </p>
-                ) : null}
-              </>
-            )}
+            {inviteFeedback !== 'idle' && inviteFeedback !== 'error' ? (
+              <p className={styles.inviteFeedback} role="status">
+                {inviteFeedback === 'copied' ? 'Invite link copied' : 'Invite shared'}
+              </p>
+            ) : null}
+
+            {state.inviteUrl ? (
+              <input
+                type="text"
+                readOnly
+                value={state.inviteUrl}
+                tabIndex={-1}
+                aria-hidden="true"
+                className="sr-only"
+              />
+            ) : null}
           </div>
         ) : null}
 
-        {!isRemoteConnected && !isStrangerMatch ? (
-          <div className={styles.joinCodeSection}>
-            {!showJoinInput ? (
-              <button
-                type="button"
-                onClick={() => setShowJoinInput(true)}
-                className={styles.joinCodeToggle}
-              >
-                {isHost ? 'Have a code? Join a friend’s room' : 'Join another room with a code'}
-              </button>
-            ) : (
-              <form onSubmit={handleJoinByCode} className={styles.joinCodeForm}>
-                <label htmlFor="room-code-input" className="sr-only">Room code</label>
-                <input
-                  id="room-code-input"
-                  type="text"
-                  placeholder="CODE"
-                  maxLength={6}
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  value={inputRoomCode}
-                  onChange={(e) => {
-                    setInputRoomCode(e.target.value.toUpperCase())
-                    setJoinCodeError(null)
-                  }}
-                  className={styles.joinCodeInput}
-                  autoFocus
-                />
-                <button type="submit" className={styles.joinCodeButton}>
-                  Join
-                </button>
+        {state.error && !isHost ? (
+          <div className={styles.guestErrorSection}>
+            <p className={styles.inviteFeedback} data-error="true" role="alert">
+              {state.error}
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {onTryAnotherCode ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowJoinInput(false)
-                    setJoinCodeError(null)
-                  }}
-                  className={styles.rulesClose}
-                  style={{ minWidth: '2rem', minHeight: '2rem', padding: '0.2rem' }}
-                  aria-label="Cancel entering room code"
+                  onClick={onTryAnotherCode}
+                  className={styles.tryAnotherCodeButton}
                 >
-                  <X className="h-3.5 w-3.5" />
+                  Try another code
                 </button>
-              </form>
-            )}
-            {joinCodeError ? <p className={styles.inviteFeedback} data-error="true" role="alert">{joinCodeError}</p> : null}
+              ) : null}
+              <button
+                type="button"
+                onClick={handleRetry}
+                className={styles.connectionRetry}
+                style={{ margin: 0 }}
+              >
+                Try again
+              </button>
+            </div>
           </div>
         ) : null}
 
         <p className={styles.connectionLine} data-connected={isRemoteConnected ? 'true' : 'false'} role="status" aria-live="polite">
           <strong>{connectionCopy}</strong>
           {isRemoteConnected && !state.error ? ` · ${state.remotePlayer?.name ?? 'Opponent'}` : null}
-          {state.error && !isHost ? (
-            <button type="button" onClick={handleRetry} className={styles.connectionRetry}>Try again</button>
-          ) : null}
+          {isRemoteConnected ? <span className="sr-only">Connected via P2P</span> : null}
         </p>
 
         <section className={styles.boardSheet} aria-label="Bingo Lobby and Board setup">
@@ -422,7 +393,6 @@ export const BingoMatchLobby: React.FC<BingoMatchLobbyProps> = ({
               submitLabel="Ready with this board"
             />
           )}
-
         </section>
       </div>
 

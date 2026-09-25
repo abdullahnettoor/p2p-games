@@ -26,7 +26,10 @@ try {
   const inviteInput = hostPage.locator('input[readonly]')
   await inviteInput.waitFor({ timeout: TIMEOUT_MS })
   await hostPage.waitForFunction(
-    () => (document.querySelector('input[readonly]')?.value ?? '').includes('match='),
+    () => {
+      const val = document.querySelector('input[readonly]')?.value ?? ''
+      return val.includes('match=') || val.includes('room=')
+    },
     undefined,
     { timeout: TIMEOUT_MS }
   )
@@ -36,15 +39,4 @@ try {
   console.log('· guest: opening invite link')
   await guestPage.goto(inviteUrl, { waitUntil: 'domcontentloaded' })
 
-  await Promise.all([
-    hostPage.getByText('Connected via P2P').waitFor({ timeout: TIMEOUT_MS }),
-    guestPage.getByText('Connected via P2P').waitFor({ timeout: TIMEOUT_MS }),
-  ])
-
-  console.log(`\nPASS — Bingo lobby peers connected in ${Date.now() - startedAt}ms`)
-} catch (err) {
-  console.log(`\nFAIL — ${err.message.split('\n')[0]}`)
-  process.exitCode = 1
-} finally {
-  await browser.close()
-}
+  await Promise.all([\n    hostPage.getByText('Connected via P2P').waitFor({ timeout: TIMEOUT_MS }),\n    guestPage.getByText('Connected via P2P').waitFor({ timeout: TIMEOUT_MS }),\n  ])\n\n  console.log(`\\nPASS — Bingo lobby peers connected in ${Date.now() - startedAt}ms`)\n} catch (err) {\n  console.log(`\\nFAIL — ${err.message.split('\\n')[0]}`)\n  process.exitCode = 1\n} finally {\n  await browser.close()\n}\n

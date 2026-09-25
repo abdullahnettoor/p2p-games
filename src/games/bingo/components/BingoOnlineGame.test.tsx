@@ -32,7 +32,7 @@ vi.mock('@/core/transport/PeerJSTransport', () => {
   }
 })
 
-describe('BingoOnlineGame stranger matchmaking UI', () => {
+describe('BingoOnlineGame entry flow and state machine', () => {
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -54,68 +54,130 @@ describe('BingoOnlineGame stranger matchmaking UI', () => {
     })
   }
 
-  async function renderGame() {
-    render(<BingoOnlineGame role="host" onExit={vi.fn()} />)
-    await act(async () => {
-      vi.runOnlyPendingTimers()
-    })
-  }
+  it('renders choice screen on /bingo and does not start a lobby until chosen', async () => {
+    const startSpy = vi.spyOn(LobbyCoordinator.prototype, 'start')
+    render(<BingoOnlineGame onExit={vi.fn()} />)
 
-  it('searches inside the lobby, counts elapsed time, and cancels without rebuilding the lobby', async () => {
+    expect(screen.getByRole('heading', { name: 'Choose how to play' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Create a room/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Join with a code/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Play with a stranger/i })).toBeInTheDocument()
+    expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  it('Create a room starts host lobby, and Back destroys lobby and returns to choice screen', async () => {
     const startSpy = vi.spyOn(LobbyCoordinator.prototype, 'start')
     const destroySpy = vi.spyOn(LobbyCoordinator.prototype, 'destroy')
-    pendingFindMatch()
-    await renderGame()
+    render(<BingoOnlineGame onExit={vi.fn()} />)
+
+    // Click Create a room
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Create a room/i }))
+      vi.runOnlyPendingTimers()
+    })
+
     expect(startSpy).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
+
+    // Click Back
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to menu' }))
+    })
+
+    expect(destroySpy).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('heading', { name: 'Choose how to play' })).toBeInTheDocument()
+  })
+
+  it('Join with a code navigates to code input, joins guest lobby on valid code, and supports Try another code', async () => {
+    render(<BingoOnlineGame onExit={vi.fn()} />)
+
+    // Open Join with code screen
+    fireEvent.click(screen.getByRole('button', { name: /Join with a code/i }))
+    expect(screen.getByRole('heading', { name: 'Join with a code' })).toBeInTheDocument()
+
+    const input = screen.getByPlaceholderText('CODE')
+    const submitBtn = screen.getByRole('button', { name: 'Join Room' })
+
+    // Invalid code
+    fireEvent.change(input, { target: { value: 'XYZ' } })
+    fireEvent.click(submitBtn)
+    expect(screen.getByRole('alert')).toHaveTextContent(/Enter a valid 6-character room code/i)
+
+    // Valid code
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'K7M4QX' } })
+      fireEvent.click(submitBtn)
+      vi.runOnlyPendingTimers()
+    })
+
+    // Now in guest lobby
+    expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Match invite')).not.toBeInTheDocument()
+  })
+
+  it('Play with a stranger searches, counts elapsed time, and cancel returns to choice screen', async () => {
+    pendingFindMatch()
+    render(<BingoOnlineGame onExit={vi.fn()} />)
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Play with a stranger/i }))
     })
-    expect(screen.getByText(/Searching for a stranger… 0:00/)).toBeInTheDocument()
-    expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
+
+    expect(screen.getByRole('heading', { name: /Searching for a stranger…/i })).toBeInTheDocument()
+    expect(screen.getByText('0:00')).toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(5000)
     })
-    expect(screen.getByText(/Searching for a stranger… 0:05/)).toBeInTheDocument()
+    expect(screen.getByText('0:05')).toBeInTheDocument()
 
+    // Cancel returns to choice screen
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel matchmaking search' }))
     })
-    expect(screen.getByRole('button', { name: /Play with a stranger/i })).toBeInTheDocument()
-    // Same lobby throughout: no teardown, no second start.
-    expect(startSpy).toHaveBeenCalledTimes(1)
-    expect(destroySpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Choose how to play' })).toBeInTheDocument()
   })
 
-  it('offers to search again after a timeout, keeping the friend lobby', async () => {
+  it('Play with a stranger timeout shows options to search again or create room instead', async () => {
     vi.spyOn(StrangerMatchmaker.prototype, 'findMatch').mockImplementation(async function (this: any) {
       this.status = 'timeout'
-      throw new Error('Matchmaking timeout: no opponent found')
+      throw new Error('Matchmaking timeout')
     })
-    await renderGame()
+    render(<BingoOnlineGame onExit={vi.fn()} />)
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Play with a stranger/i }))
-    })
-
-    expect(screen.getByRole('button', { name: /No one found · Search again/i })).toBeInTheDocument()
-    expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
-  })
-
-  it('switches to a guest lobby when a host enters a room code', async () => {
-    const destroySpy = vi.spyOn(LobbyCoordinator.prototype, 'destroy')
-    await renderGame()
-
-    fireEvent.click(screen.getByRole('button', { name: /Have a code\? Join a friend/i }))
-    fireEvent.change(screen.getByPlaceholderText('CODE'), { target: { value: 'k7m4qx' } })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Join' }))
       vi.runOnlyPendingTimers()
     })
 
-    expect(destroySpy).toHaveBeenCalledTimes(1)
-    expect(window.location.search).toBe('?room=K7M4QX')
+    expect(screen.getByRole('heading', { name: /No one found right now/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Search again' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Create a room instead/i })).toBeInTheDocument()
+
+    // Clicking Create a room instead goes to host lobby
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Create a room instead/i }))
+      vi.runOnlyPendingTimers()
+    })
+    expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
+  })
+
+  it('initialRoomCode directly opens guest lobby', async () => {
+    render(<BingoOnlineGame initialRoomCode="K7M4QX" onExit={vi.fn()} />)
+    await act(async () => {
+      vi.runOnlyPendingTimers()
+    })
+
+    expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Match invite')).not.toBeInTheDocument()
+  })
+
+  it('initialAction=create directly opens host lobby', async () => {
+    render(<BingoOnlineGame initialAction="create" onExit={vi.fn()} />)
+    await act(async () => {
+      vi.runOnlyPendingTimers()
+    })
+
+    expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
   })
 })

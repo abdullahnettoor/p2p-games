@@ -13,11 +13,18 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: navigation.replace }),
 }))
 
-
 vi.mock('@/games/bingo/components/BingoOnlineGame', () => ({
-  BingoOnlineGame: ({ role, matchId, onExit }: { role: string; matchId?: string; onExit: () => void }) => (
+  BingoOnlineGame: ({
+    initialAction,
+    initialRoomCode,
+    onExit,
+  }: {
+    initialAction?: string | null
+    initialRoomCode?: string | null
+    onExit: () => void
+  }) => (
     <div>
-      <span>{`Online BINGO: ${role}:${matchId ?? 'new'}`}</span>
+      <span>{`Online BINGO: action=${initialAction ?? 'none'}:room=${initialRoomCode ?? 'none'}`}</span>
       <button type="button" onClick={onExit}>Exit game</button>
     </div>
   ),
@@ -29,19 +36,31 @@ describe('BingoPage', () => {
     navigation.replace.mockClear()
   })
 
-  it('starts an online Host Match directly when opened from the Catalog', () => {
+  it('renders default online game without action or room code on /bingo', () => {
     render(<BingoPage />)
 
-    expect(screen.getByText('Online BINGO: host:new')).toBeInTheDocument()
-    expect(screen.queryByText(/Pass & Play/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Online BINGO: action=none:room=none')).toBeInTheDocument()
   })
 
-  it('opens an invited Guest Match without showing mode selection', () => {
+  it('passes action=create when opening /bingo?action=create', () => {
+    navigation.searchParams = new URLSearchParams('action=create')
+    render(<BingoPage />)
+
+    expect(screen.getByText('Online BINGO: action=create:room=none')).toBeInTheDocument()
+  })
+
+  it('passes room code when opening /bingo?room=friend-123', () => {
+    navigation.searchParams = new URLSearchParams('room=friend-123')
+    render(<BingoPage />)
+
+    expect(screen.getByText('Online BINGO: action=none:room=friend-123')).toBeInTheDocument()
+  })
+
+  it('passes room code when opening legacy /bingo?match=friend-123', () => {
     navigation.searchParams = new URLSearchParams('match=friend-123')
     render(<BingoPage />)
 
-    expect(screen.getByText('Online BINGO: guest:friend-123')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Create Online Match' })).not.toBeInTheDocument()
+    expect(screen.getByText('Online BINGO: action=none:room=friend-123')).toBeInTheDocument()
   })
 
   it('returns to the Catalog when the game exits', () => {
