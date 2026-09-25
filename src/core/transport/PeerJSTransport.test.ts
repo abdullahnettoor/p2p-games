@@ -707,6 +707,60 @@ describe("PeerJSTransport stranger matchmaking support", () => {
     host.disconnect()
   })
 
+  it("a half-open joiner does not make a stranger host full", async () => {
+    const host = new PeerJSTransport({
+      role: "host",
+      rejectExtraConnections: true,
+      isStrangerMatch: true,
+    })
+    await host.connect()
+    const peer = (host as any).peerInstance
+
+    // First joiner never finishes ICE (it already gave up on its side).
+    const stalled = new MockDataConnection("gave-up-joiner", false)
+    peer.emit("connection", stalled)
+
+    const next = new MockDataConnection("next-joiner", true)
+    peer.emit("connection", next)
+
+    expect(next.send).not.toHaveBeenCalledWith({ type: "reject", payload: { reason: "full" } })
+    expect(stalled.close).toHaveBeenCalled()
+    expect(host.status).toBe("connected")
+    expect(host.remotePlayerId).toBe("next-joiner")
+
+    host.disconnect()
+  })
+
+  it("a stalled joiner timing out drops only that connection on a stranger host", async () => {
+    vi.useFakeTimers()
+    try {
+      const host = new PeerJSTransport({
+        role: "host",
+        rejectExtraConnections: true,
+        isStrangerMatch: true,
+      })
+      const errors: Error[] = []
+      host.onError((err) => errors.push(err))
+      const connecting = host.connect()
+      await vi.advanceTimersByTimeAsync(5)
+      await connecting
+      const peer = (host as any).peerInstance
+
+      const stalled = new MockDataConnection("stalled-joiner", false)
+      peer.emit("connection", stalled)
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      expect(errors).toEqual([])
+      expect(stalled.close).toHaveBeenCalled()
+      expect((host as any).connection).toBeNull()
+      expect(host.status).toBe("connecting")
+
+      host.disconnect()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("guest receives host reject signal and notifies HostRejectedError", async () => {
     const guest = new PeerJSTransport({
       role: "guest",

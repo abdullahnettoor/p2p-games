@@ -16,7 +16,6 @@ import { BingoMatchLobby } from './BingoMatchLobby'
 import { BingoMatchplay } from './BingoMatchplay'
 import { BingoMatchCoordinator } from '../state/BingoMatchCoordinator'
 import { PlayerRole } from '@/core/games/types'
-import lobbyStyles from './BingoMatchLobby.module.css'
 import '../bingoTokens.css'
 
 export interface BingoOnlineGameProps {
@@ -26,18 +25,15 @@ export interface BingoOnlineGameProps {
   onExit: () => void
 }
 
-type ScreenMode = 'lobby' | 'searching' | 'timeout'
-
-interface ScreenState {
-  mode: ScreenMode
-  elapsedSeconds?: number
-}
-
-function formatElapsed(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
+/**
+ * Stranger search runs in the background while the friend lobby stays up, so
+ * a friend can still join by code or link. The lobby only switches over once a
+ * stranger is actually paired.
+ */
+export type StrangerSearchState =
+  | { status: 'idle' }
+  | { status: 'searching'; elapsedSeconds: number }
+  | { status: 'timeout' }
 
 export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
   role,
@@ -45,7 +41,7 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
   initialPlayerName,
   onExit,
 }) => {
-  const [screenState, setScreenState] = useState<ScreenState>({ mode: 'lobby' })
+  const [strangerSearch, setStrangerSearch] = useState<StrangerSearchState>({ status: 'idle' })
   const [isStrangerMatch, setIsStrangerMatch] = useState(false)
   const [matchCoordinator, setMatchCoordinator] = useState<BingoMatchCoordinator | null>(null)
 
@@ -150,7 +146,6 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
 
   matchCoordinatorRef.current = matchCoordinator
 
-  // Cleanup helper
   const clearSearchTimer = () => {
     if (searchIntervalRef.current) {
       clearInterval(searchIntervalRef.current)
@@ -158,81 +153,73 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     }
   }
 
-  // Cancel stranger search and return to normal friend lobby
-  const returnToFriendLobby = useCallback(() => {
+  /** Stops a background stranger search. The friend lobby is left untouched. */
+  const cancelStrangerSearch = useCallback(() => {
     clearSearchTimer()
-    if (strangerMatchmakerRef.current) {
-      const matchmaker = strangerMatchmakerRef.current
-      strangerMatchmakerRef.current = null
-      matchmaker.cancel()
-    }
-    if (lobbyRef.current) {
-      lobbyRef.current.destroy()
-      lobbyRef.current = null
-    }
-    setIsStrangerMatch(false)
-    setScreenState({ mode: 'lobby' })
-    const friendLobby = createFriendLobby(role, matchId)
-    setLobbyCoordinator(friendLobby)
-  }, [createFriendLobby, matchId, role])
+    const matchmaker = strangerMatchmakerRef.current
+    strangerMatchmakerRef.current = null
+    matchmaker?.cancel()
+    setStrangerSearch({ status: 'idle' })
+  }, [])
 
-  // Start stranger search flow
   const startStrangerSearch = useCallback(async () => {
+    if (strangerMatchmakerRef.current) return
     clearSearchTimer()
 
-    // Destroy active friend lobby
-    if (lobbyRef.current) {
-      lobbyRef.current.destroy()
-      lobbyRef.current = null
-    }
-
-    setScreenState({ mode: 'searching', elapsedSeconds: 0 })
-    setIsStrangerMatch(true)
-
-    // Start elapsed seconds counter
+    setStrangerSearch({ status: 'searching', elapsedSeconds: 0 })
     searchIntervalRef.current = setInterval(() => {
-      setScreenState((prev) => {
-        if (prev.mode !== 'searching') return prev
-        return { mode: 'searching', elapsedSeconds: (prev.elapsedSeconds ?? 0) + 1 }
-      })
+      setStrangerSearch((prev) =>
+        prev.status === 'searching' ? { status: 'searching', elapsedSeconds: prev.elapsedSeconds + 1 } : prev
+      )
     }, 1000)
 
-    const matchmaker = new StrangerMatchmaker({
-      gameId: 'bingo',
-    })
+    const matchmaker = new StrangerMatchmaker({ gameId: 'bingo' })
     strangerMatchmakerRef.current = matchmaker
 
     try {
       const matchResult = await matchmaker.findMatch()
-      clearSearchTimer()
-      if (strangerMatchmakerRef.current === matchmaker) {
-        strangerMatchmakerRef.current = null
-      }
-
-      if (!activeRef.current) {
+      if (strangerMatchmakerRef.current !== matchmaker || !activeRef.current) {
         matchResult.transport.disconnect()
         return
       }
-
-      const strangerLobby = createStrangerLobby(matchResult)
-      setLobbyCoordinator(strangerLobby)
-      setScreenState({ mode: 'lobby' })
-    } catch (err) {
+      strangerMatchmakerRef.current = null
       clearSearchTimer()
-      const status = matchmaker.status
-      if (strangerMatchmakerRef.current === matchmaker) {
-        strangerMatchmakerRef.current = null
-      }
 
+      // Paired: the friend lobby (and its room code) is no longer needed.
+      setIsStrangerMatch(true)
+      setStrangerSearch({ status: 'idle' })
+      setLobbyCoordinator(createStrangerLobby(matchResult))
+    } catch {
+      // Cancelled searches have already been cleared from the ref.
+      if (strangerMatchmakerRef.current !== matchmaker) return
+      strangerMatchmakerRef.current = null
+      clearSearchTimer()
       if (!activeRef.current) return
-
-      if (status === 'timeout') {
-        setScreenState({ mode: 'timeout' })
-      } else if (status !== 'cancelled') {
-        returnToFriendLobby()
-      }
+      setStrangerSearch(matchmaker.status === 'timeout' ? { status: 'timeout' } : { status: 'idle' })
     }
-  }, [createStrangerLobby, returnToFriendLobby])
+  }, [createStrangerLobby])
+
+  /** Leave the current room and join another one by its room code. */
+  const joinRoomByCode = useCallback(
+    (code: string) => {
+      cancelStrangerSearch()
+      setIsStrangerMatch(false)
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', `/bingo?room=${encodeURIComponent(code)}`)
+      }
+      setLobbyCoordinator(createFriendLobby('guest', code))
+    },
+    [cancelStrangerSearch, createFriendLobby]
+  )
+
+  // A friend joining while we search for a stranger wins: stop searching.
+  useEffect(() => {
+    return lobbyCoordinator.subscribe(() => {
+      if (lobbyCoordinator.state.remotePlayer?.connected && strangerMatchmakerRef.current) {
+        cancelStrangerSearch()
+      }
+    })
+  }, [lobbyCoordinator, cancelStrangerSearch])
 
   // Start lobby coordinator on mount / when coordinator changes
   useEffect(() => {
@@ -240,19 +227,7 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     lobbyRef.current = lobbyCoordinator
     lobbyCoordinator.start().catch(() => {})
 
-    const handleBeforeUnload = () => {
-      strangerMatchmakerRef.current?.cancel()
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-
     return () => {
-      activeRef.current = false
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      clearSearchTimer()
-      if (strangerMatchmakerRef.current) {
-        strangerMatchmakerRef.current.cancel()
-        strangerMatchmakerRef.current = null
-      }
       if (matchCoordinatorRef.current) {
         matchCoordinatorRef.current.destroy()
         matchCoordinatorRef.current = null
@@ -264,68 +239,28 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     }
   }, [lobbyCoordinator])
 
+  // Tear down any background search when leaving the page or unmounting.
+  useEffect(() => {
+    activeRef.current = true
+    const handleBeforeUnload = () => {
+      strangerMatchmakerRef.current?.cancel()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      activeRef.current = false
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      clearSearchTimer()
+      strangerMatchmakerRef.current?.cancel()
+      strangerMatchmakerRef.current = null
+    }
+  }, [])
+
   const handleExit = () => {
     if (matchCoordinatorRef.current) {
       matchCoordinatorRef.current.destroy()
       matchCoordinatorRef.current = null
     }
     onExit()
-  }
-
-  if (screenState.mode === 'searching') {
-    return (
-      <div className={lobbyStyles.lobbyContainer}>
-        <div className={lobbyStyles.searchingCard}>
-          <div className={lobbyStyles.searchingRadar}>
-            <div className={lobbyStyles.searchingIcon}>🎲</div>
-          </div>
-          <h2 className={lobbyStyles.searchingTitle}>Looking for a stranger…</h2>
-          <p className={lobbyStyles.searchingSubtitle}>
-            Scanning active slots for an open Bingo match.
-          </p>
-          <div className={lobbyStyles.elapsedPill}>
-            Time elapsed: {formatElapsed(screenState.elapsedSeconds ?? 0)}
-          </div>
-          <button
-            type="button"
-            className={lobbyStyles.cancelSearchButton}
-            onClick={returnToFriendLobby}
-          >
-            Cancel search
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (screenState.mode === 'timeout') {
-    return (
-      <div className={lobbyStyles.lobbyContainer}>
-        <div className={lobbyStyles.searchingCard}>
-          <div className={lobbyStyles.searchingIcon}>⏳</div>
-          <h2 className={lobbyStyles.searchingTitle}>No opponents found yet</h2>
-          <p className={lobbyStyles.searchingSubtitle}>
-            We couldn’t find another player searching right now. Would you like to keep waiting or invite a friend?
-          </p>
-          <div className={lobbyStyles.timeoutActions}>
-            <button
-              type="button"
-              className={lobbyStyles.keepWaitingButton}
-              onClick={startStrangerSearch}
-            >
-              Keep waiting
-            </button>
-            <button
-              type="button"
-              className={lobbyStyles.inviteFriendButton}
-              onClick={returnToFriendLobby}
-            >
-              Invite a friend instead
-            </button>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   if (matchCoordinator) {
@@ -336,6 +271,9 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     <BingoMatchLobby
       session={lobbyCoordinator}
       onPlayStranger={startStrangerSearch}
+      onCancelStranger={cancelStrangerSearch}
+      strangerSearch={strangerSearch}
+      onJoinRoomCode={joinRoomByCode}
       isStrangerMatch={isStrangerMatch}
       onExit={handleExit}
     />

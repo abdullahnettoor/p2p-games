@@ -274,10 +274,49 @@ describe('BingoMatchLobby', () => {
     expect(screen.queryByRole('button', { name: 'Show invite QR code' })).not.toBeInTheDocument()
   })
 
-  it('hides room code entry input for hosts', async () => {
+  it('lets a waiting host join a friend\'s room by code', async () => {
     const session = await createHostSession()
-    render(<BingoMatchLobby session={session} />)
-    expect(screen.queryByRole('button', { name: /Join another room with a code/i })).not.toBeInTheDocument()
+    session.state.roomCode = 'HQST22'
+    const onJoinRoomCode = vi.fn()
+    render(<BingoMatchLobby session={session} onJoinRoomCode={onJoinRoomCode} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Have a code\? Join a friend/i }))
+    const input = screen.getByPlaceholderText('CODE')
+
+    // Own code and malformed codes are refused with a message.
+    fireEvent.change(input, { target: { value: 'hqst22' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(/your own room code/i)
+
+    fireEvent.change(input, { target: { value: 'O0I1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(/6-character/i)
+    expect(onJoinRoomCode).not.toHaveBeenCalled()
+
+    fireEvent.change(input, { target: { value: 'k7m4qx' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+    expect(onJoinRoomCode).toHaveBeenCalledWith('K7M4QX')
+  })
+
+  it('shows stranger search status inside the lobby with a cancel action', async () => {
+    const session = await createHostSession()
+    const onCancelStranger = vi.fn()
+    render(
+      <BingoMatchLobby
+        session={session}
+        onPlayStranger={vi.fn()}
+        onCancelStranger={onCancelStranger}
+        strangerSearch={{ status: 'searching', elapsedSeconds: 72 }}
+      />
+    )
+
+    expect(screen.getByText(/Searching for a stranger… 1:12/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Play with a stranger/i })).not.toBeInTheDocument()
+    // The friend invite stays available while searching.
+    expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onCancelStranger).toHaveBeenCalled()
   })
 
   it('shows room code entry input for guests and navigates on submit', async () => {
