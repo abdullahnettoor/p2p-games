@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { BingoStrangerSearchScreen } from './BingoStrangerSearchScreen'
 
 describe('BingoStrangerSearchScreen', () => {
-  it('renders searching state with elapsed time and cancel button', () => {
+  it('renders searching state with elapsed time and single cancel button', () => {
     const onCancel = vi.fn()
 
     render(
@@ -20,8 +20,10 @@ describe('BingoStrangerSearchScreen', () => {
     expect(screen.getByRole('heading', { name: /Searching for a stranger…/i })).toBeInTheDocument()
     expect(screen.getByText('1:05')).toBeInTheDocument()
 
-    const cancelBtn = screen.getByRole('button', { name: 'Cancel' })
-    fireEvent.click(cancelBtn)
+    // Assert there is only one cancel button
+    const cancelButtons = screen.getAllByRole('button', { name: /cancel/i })
+    expect(cancelButtons).toHaveLength(1)
+    fireEvent.click(cancelButtons[0])
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
@@ -43,6 +45,35 @@ describe('BingoStrangerSearchScreen', () => {
     expect(screen.getByRole('heading', { name: /No one found right now/i })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Search again' }))
+    expect(onSearchAgain).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: /Create a room instead/i }))
+    expect(onCreateRoomInstead).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to menu' }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders error state with retry action buttons', () => {
+    const onSearchAgain = vi.fn()
+    const onCreateRoomInstead = vi.fn()
+    const onCancel = vi.fn()
+
+    render(
+      <BingoStrangerSearchScreen
+        status="error"
+        errorMessage="Signaling server unavailable"
+        elapsedSeconds={12}
+        onCancel={onCancel}
+        onSearchAgain={onSearchAgain}
+        onCreateRoomInstead={onCreateRoomInstead}
+      />
+    )
+
+    expect(screen.getByRole('heading', { name: /Connection failed/i })).toBeInTheDocument()
+    expect(screen.getByText('Signaling server unavailable')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(onSearchAgain).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: /Create a room instead/i }))

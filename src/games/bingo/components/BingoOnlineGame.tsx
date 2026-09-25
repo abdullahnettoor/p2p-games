@@ -30,11 +30,9 @@ export type BingoScreen =
   | 'stranger-lobby'
 
 export interface BingoOnlineGameProps {
-  initialAction?: 'create' | 'join' | 'stranger' | null
+  initialAction?: 'create' | null
   initialRoomCode?: string | null
   initialPlayerName?: string
-  role?: PlayerRole
-  matchId?: string
   onExit: () => void
 }
 
@@ -48,24 +46,19 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
   initialAction = null,
   initialRoomCode = null,
   initialPlayerName,
-  role,
-  matchId,
   onExit,
 }) => {
-  const initialTargetRoom = initialRoomCode || matchId || null
-
   const getInitialScreen = (): BingoScreen => {
-    if (initialTargetRoom) return 'guest-lobby'
-    if (initialAction === 'create' || (role === 'host' && !initialAction)) return 'create-room'
-    if (initialAction === 'join') return 'join-code'
-    if (initialAction === 'stranger') return 'stranger-search'
+    if (initialRoomCode) return 'guest-lobby'
+    if (initialAction === 'create') return 'create-room'
     return 'choice'
   }
 
   const [screen, setScreen] = useState<BingoScreen>(getInitialScreen)
   const [isStrangerMatch, setIsStrangerMatch] = useState(false)
   const [matchCoordinator, setMatchCoordinator] = useState<BingoMatchCoordinator | null>(null)
-  const [strangerStatus, setStrangerStatus] = useState<'searching' | 'timeout'>('searching')
+  const [strangerStatus, setStrangerStatus] = useState<'searching' | 'timeout' | 'error'>('searching')
+  const [strangerError, setStrangerError] = useState<string | null>(null)
   const [strangerElapsed, setStrangerElapsed] = useState(0)
   const [joinCodeError, setJoinCodeError] = useState<string | null>(null)
 
@@ -172,10 +165,10 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
   }, [])
 
   const [lobbyCoordinator, setLobbyCoordinator] = useState<LobbyCoordinator<BingoBoard> | null>(() => {
-    if (initialTargetRoom) {
-      return createFriendLobby('guest', initialTargetRoom)
+    if (initialRoomCode) {
+      return createFriendLobby('guest', initialRoomCode)
     }
-    if (initialAction === 'create' || (role === 'host' && !initialAction)) {
+    if (initialAction === 'create') {
       return createFriendLobby('host')
     }
     return null
@@ -270,6 +263,7 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     strangerMatchmakerRef.current = null
 
     setStrangerStatus('searching')
+    setStrangerError(null)
     setStrangerElapsed(0)
     setScreen('stranger-search')
     updateBrowserUrl('/bingo')
@@ -292,12 +286,19 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
       setIsStrangerMatch(true)
       setLobbyCoordinator(createStrangerLobby(matchResult))
       setScreen('stranger-lobby')
-    } catch {
+    } catch (err) {
       if (strangerMatchmakerRef.current !== matchmaker) return
       strangerMatchmakerRef.current = null
       clearSearchTimer()
       if (!activeRef.current) return
-      setStrangerStatus('timeout')
+      if (matchmaker.status === 'timeout') {
+        setStrangerStatus('timeout')
+        setStrangerError(null)
+      } else {
+        setStrangerStatus('error')
+        const message = err instanceof Error ? err.message : 'Matchmaking connection failed.'
+        setStrangerError(message)
+      }
     }
   }, [createStrangerLobby])
 
@@ -320,17 +321,17 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     updateBrowserUrl('/bingo')
   }, [cancelStrangerSearch])
 
-  // If initial action is "stranger", start search on mount
-  useEffect(() => {
-    if (initialAction === 'stranger') {
-      startStrangerSearch()
+  const handleExit = useCallback(() => {
+    if (matchCoordinatorRef.current) {
+      matchCoordinatorRef.current.destroy()
+      matchCoordinatorRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    onExit()
+  }, [onExit])
 
   // Matchplay screen
   if (matchCoordinator) {
-    return <BingoMatchplay coordinator={matchCoordinator} onExit={handleBackToChoice} />
+    return <BingoMatchplay coordinator={matchCoordinator} onExit={handleExit} />
   }
 
   // 1. Choice screen
@@ -361,6 +362,7 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     return (
       <BingoStrangerSearchScreen
         status={strangerStatus}
+        errorMessage={strangerError}
         elapsedSeconds={strangerElapsed}
         onCancel={handleCancelStrangerSearch}
         onSearchAgain={startStrangerSearch}

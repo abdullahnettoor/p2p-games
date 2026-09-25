@@ -5,6 +5,8 @@ import { BingoOnlineGame } from './BingoOnlineGame'
 import { StrangerMatchmaker } from '@/core/matchmaking/strangerMatch'
 import { LobbyCoordinator } from '@/core/lobby/LobbyCoordinator'
 
+const mockTransports: any[] = []
+
 // Mock PeerJSTransport so it doesn't open real WebRTC/PeerJS
 vi.mock('@/core/transport/PeerJSTransport', () => {
   return {
@@ -13,8 +15,11 @@ vi.mock('@/core/transport/PeerJSTransport', () => {
       public localPlayerId = 'mock-peer-id'
       public remotePlayerId = null
       public role: string
+      public errorHandlers: ((err: any) => void)[] = []
+
       constructor(options: { role: string }) {
         this.role = options.role
+        mockTransports.push(this)
       }
       async connect() {
         this.status = 'connected'
@@ -25,7 +30,13 @@ vi.mock('@/core/transport/PeerJSTransport', () => {
       onStatusChange(h: any) { setTimeout(() => h('connected'), 0); return () => {} }
       onPlayerJoin() { return () => {} }
       onPlayerLeave() { return () => {} }
-      onError() { return () => {} }
+      onError(h: any) {
+        this.errorHandlers.push(h)
+        return () => {}
+      }
+      triggerError(err: any) {
+        for (const h of this.errorHandlers) h(err)
+      }
       onSignalingChange() { return () => {} }
       disconnect() { this.status = 'closed' }
     },
@@ -35,6 +46,7 @@ vi.mock('@/core/transport/PeerJSTransport', () => {
 describe('BingoOnlineGame entry flow and state machine', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    mockTransports.length = 0
   })
 
   afterEach(() => {
@@ -65,7 +77,7 @@ describe('BingoOnlineGame entry flow and state machine', () => {
     expect(startSpy).not.toHaveBeenCalled()
   })
 
-  it('Create a room starts host lobby, and Back destroys lobby and returns to choice screen', async () => {
+  it('Create a room starts host lobby exactly once, and Back destroys lobby and returns to choice screen', async () => {
     const startSpy = vi.spyOn(LobbyCoordinator.prototype, 'start')
     const destroySpy = vi.spyOn(LobbyCoordinator.prototype, 'destroy')
     render(<BingoOnlineGame onExit={vi.fn()} />)
@@ -76,6 +88,7 @@ describe('BingoOnlineGame entry flow and state machine', () => {
       vi.runOnlyPendingTimers()
     })
 
+    // Exactly one start call - no double lobby instantiation
     expect(startSpy).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
 
@@ -115,7 +128,36 @@ describe('BingoOnlineGame entry flow and state machine', () => {
     expect(screen.queryByLabelText('Match invite')).not.toBeInTheDocument()
   })
 
-  it('Play with a stranger searches, counts elapsed time, and cancel returns to choice screen', async () => {
+  it('Try another code transitions from guest error back to join code screen without remounting to choice', async () => {
+    render(<BingoOnlineGame initialRoomCode="K7M4QX" onExit={vi.fn()} />)
+    await act(async () => {
+      vi.runOnlyPendingTimers()
+    })
+
+    expect(screen.getByRole('grid', { name: 'BINGO Board setup' })).toBeInTheDocument()
+
+    // Trigger an error on the guest transport
+    const guestTransport = mockTransports[mockTransports.length - 1]
+    expect(guestTransport).toBeDefined()
+
+    act(() => {
+      guestTransport.triggerError(new Error('Host is unavailable'))
+    })
+
+    const tryAnotherBtn = screen.getByRole('button', { name: 'Try another code' })
+    expect(tryAnotherBtn).toBeInTheDocument()
+
+    // Clicking "Try another code" should open the join-code screen, NOT the choice screen
+    act(() => {
+      fireEvent.click(tryAnotherBtn)
+    })
+
+    expect(screen.getByRole('heading', { name: 'Join with a code' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('CODE')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Choose how to play' })).not.toBeInTheDocument()
+  })
+
+  it('Play with a stranger searches, counts elapsed time, and single cancel button returns to choice screen', async () => {
     pendingFindMatch()
     render(<BingoOnlineGame onExit={vi.fn()} />)
 
@@ -133,7 +175,7 @@ describe('BingoOnlineGame entry flow and state machine', () => {
 
     // Cancel returns to choice screen
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel matchmaking search' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     })
     expect(screen.getByRole('heading', { name: 'Choose how to play' })).toBeInTheDocument()
   })
@@ -160,6 +202,23 @@ describe('BingoOnlineGame entry flow and state machine', () => {
       vi.runOnlyPendingTimers()
     })
     expect(screen.getByLabelText('Match invite')).toBeInTheDocument()
+  })
+
+  it('Play with a stranger error shows connection failed and Retry button', async () => {
+    vi.spyOn(StrangerMatchmaker.prototype, 'findMatch').mockImplementation(async function (this: any) {
+      this.status = 'error'
+      throw new Error('Signaling server unreachable')
+    })
+    render(<BingoOnlineGame onExit={vi.fn()} />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Play with a stranger/i }))
+      vi.runOnlyPendingTimers()
+    })
+
+    expect(screen.getByRole('heading', { name: /Connection failed/i })).toBeInTheDocument()
+    expect(screen.getByText('Signaling server unreachable')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 
   it('initialRoomCode directly opens guest lobby', async () => {

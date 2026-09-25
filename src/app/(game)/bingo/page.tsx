@@ -18,7 +18,6 @@ function BingoContent() {
   return (
     <div className="gameRouteSurface">
       <BingoOnlineGame
-        key={`${actionParam ?? ''}:${matchParam ?? ''}`}
         initialAction={actionParam === 'create' ? 'create' : null}
         initialRoomCode={matchParam ?? null}
         onExit={handleExitToCatalog}

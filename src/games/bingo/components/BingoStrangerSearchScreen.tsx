@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, CircleHelp, Loader2, Sparkles, Users, X } from 'lucide-react'
+import { AlertCircle, CircleHelp, Loader2, Sparkles, Users, X } from 'lucide-react'
 import { BingoSoundToggle } from './BingoSoundToggle'
 import { useBingoAudio } from '../hooks/useBingoAudio'
 import { cn } from '@/lib/utils'
@@ -9,7 +9,8 @@ import styles from './BingoMatchLobby.module.css'
 import '../bingoTokens.css'
 
 export interface BingoStrangerSearchScreenProps {
-  status: 'searching' | 'timeout'
+  status: 'searching' | 'timeout' | 'error'
+  errorMessage?: string | null
   elapsedSeconds: number
   onCancel: () => void
   onSearchAgain: () => void
@@ -25,6 +26,7 @@ function formatElapsed(seconds: number): string {
 
 export const BingoStrangerSearchScreen: React.FC<BingoStrangerSearchScreenProps> = ({
   status,
+  errorMessage,
   elapsedSeconds,
   onCancel,
   onSearchAgain,
@@ -47,15 +49,7 @@ export const BingoStrangerSearchScreen: React.FC<BingoStrangerSearchScreenProps>
     <div className={cn('bingoTokenScope', styles.lobbySurface, className)}>
       <div className={styles.lobbyInner}>
         <header className={styles.utilityBar}>
-          <button
-            type="button"
-            onClick={onCancel}
-            className={styles.utilityButton}
-            aria-label={status === 'searching' ? 'Cancel matchmaking search' : 'Back to mode selection'}
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            <span>{status === 'searching' ? 'Cancel' : 'Back'}</span>
-          </button>
+          <span aria-hidden="true" />
           <h1 className={styles.shellTitle}>BINGO</h1>
           <div className={styles.utilityGroup}>
             <BingoSoundToggle isMuted={isMuted} onToggle={toggleMute} />
@@ -99,9 +93,55 @@ export const BingoStrangerSearchScreen: React.FC<BingoStrangerSearchScreenProps>
               Cancel
             </button>
           </section>
+        ) : status === 'error' ? (
+          <section className={styles.strangerSearchCard} aria-labelledby="stranger-error-title">
+            <div
+              className={styles.strangerSearchPulse}
+              style={{ background: 'rgba(180, 35, 53, 0.1)', color: 'var(--bingo-urgent)' }}
+            >
+              <AlertCircle className="h-8 w-8" aria-hidden="true" />
+            </div>
+
+            <div>
+              <h2 id="stranger-error-title" className={styles.joinCodeHeading}>
+                Connection failed
+              </h2>
+              <p className={styles.joinCodeSubheading}>
+                {errorMessage || 'Unable to connect to matchmaking. Check your internet connection and try again.'}
+              </p>
+            </div>
+
+            <div className={styles.strangerTimeoutActions}>
+              <button
+                type="button"
+                onClick={onSearchAgain}
+                className={styles.strangerPrimaryBtn}
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={onCreateRoomInstead}
+                className={styles.strangerSecondaryBtn}
+              >
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                <span>Create a room instead</span>
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                className={styles.strangerTertiaryBtn}
+              >
+                Back to menu
+              </button>
+            </div>
+          </section>
         ) : (
           <section className={styles.strangerSearchCard} aria-labelledby="stranger-timeout-title">
-            <div className={styles.strangerSearchPulse} style={{ background: 'rgba(39, 49, 58, 0.08)', color: 'var(--bingo-graphite-muted)' }}>
+            <div
+              className={styles.strangerSearchPulse}
+              style={{ background: 'rgba(39, 49, 58, 0.08)', color: 'var(--bingo-graphite-muted)' }}
+            >
               <Users className="h-8 w-8" aria-hidden="true" />
             </div>
 
