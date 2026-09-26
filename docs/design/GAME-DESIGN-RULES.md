@@ -74,18 +74,21 @@ Every Game surface is hosted in a full-bleed `100dvh` container that conforms to
   - A Game's tokens must never be used outside that Game's directory (`src/games/<game>/`). This is enforced by automated guardrail tests in `npm test`.
 - **Shared components constraint:**
   - Shared components (such as shared entry screens or platform chrome outside of a specific game folder) must never reference game-scoped tokens (`--bingo-*`, `--ttt-*`).
-  - When shared entry screens are extracted (*planned in #22*), shared components may consume only the shared entry contract variables (`--entry-*`).
-- **Shared Entry-Screen Contract (Planned in #22):**
-  - Shared lobby and entry flows (choice screen, room code entry, stranger search, invite pill) will consume a small semantic CSS contract:
+  - Shared entry screens consume only the shared entry contract variables (`--entry-*`).
+- **Shared Entry-Screen Contract:**
+  - Shared lobby and entry flows (choice screen, room code entry, stranger search, invite pill) consume a small semantic CSS contract:
     - `--entry-surface`: Primary screen background
     - `--entry-surface-raised`: Elevated card and control background
     - `--entry-ink`: Primary text and foreground print
     - `--entry-ink-muted`: Secondary text and subtle labels
-    - `--entry-accent`: Highlight or primary brand accent
+    - `--entry-accent`: Host player brand accent and primary action highlights (blue family)
+    - `--entry-accent-guest`: Guest player brand accent and join-code highlights (red family)
+    - `--entry-warning`: Turn timer and stranger matchmaking warning
     - `--entry-rule`: Grid borders and divider lines
     - `--entry-focus`: Keyboard focus ring color
     - `--entry-urgent`: Alert, destructive, and timeout indicator
-  - Each Game's token file will map these variables to its own game tokens so shared screens render faithfully within that Game's aesthetic.
+    - `--entry-font-label`: Optional compact label font for buttons and badges
+  - Each Game's token file maps these variables to its own game tokens so shared screens render faithfully within that Game's aesthetic.
 
 ---
 

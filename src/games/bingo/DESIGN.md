@@ -282,9 +282,9 @@ All tokens are scoped under `.bingoTokenScope` in [`src/games/bingo/bingoTokens.
 
 ---
 
-## 7. Entry-Screen Contract Mapping (Planned)
+## 7. Entry-Screen Contract Mapping
 
-*Note: Shared entry screens will be extracted in #22. Bingo's planned mapping to that contract:*
+Bingo maps the shared entry contract tokens to its scoped game tokens:
 
 | Shared Entry Token | Bingo Token Mapping | Mapped Value | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -292,10 +292,13 @@ All tokens are scoped under `.bingoTokenScope` in [`src/games/bingo/bingoTokens.
 | `--entry-surface-raised`| `var(--bingo-paper-raised)`| `#FFFFFF` | Cards, input fields, and elevated panels |
 | `--entry-ink` | `var(--bingo-graphite)` | `#27313A` | Headings, room codes, and primary text |
 | `--entry-ink-muted` | `var(--bingo-graphite-muted)`| `#65716F` | Secondary descriptions and helper labels |
-| `--entry-accent` | `var(--bingo-host-ink)` | `#175E9C` | Brand touches and primary share highlights |
+| `--entry-accent` | `var(--bingo-host-ink)` | `#175E9C` | Host player accent and primary highlights |
+| `--entry-accent-guest` | `var(--bingo-guest-ink)` | `#A63D57` | Guest player accent and join-room actions |
+| `--entry-warning` | `var(--bingo-warning)` | `#A85B16` | Timer warning and stranger matchmaking highlights |
 | `--entry-rule` | `var(--bingo-rule)` | `#AAB7B3` | Borders, dividers, and input strokes |
 | `--entry-focus` | `var(--bingo-focus)` | `#087E8B` | Keyboard focus ring |
 | `--entry-urgent` | `var(--bingo-urgent)` | `#B42335` | Timeout notices, error banners, destructive buttons |
+| `--entry-font-label` | `var(--bingo-font-label)` | `"Arial Narrow", ...` | Compact label font for buttons and badges |
 
 ---
 

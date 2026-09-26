@@ -29,9 +29,12 @@ const ALLOWED_ENTRY_CONTRACT_VARS = new Set([
   '--entry-ink',
   '--entry-ink-muted',
   '--entry-accent',
+  '--entry-accent-guest',
+  '--entry-warning',
   '--entry-rule',
   '--entry-focus',
   '--entry-urgent',
+  '--entry-font-label',
 ])
 
 /**
