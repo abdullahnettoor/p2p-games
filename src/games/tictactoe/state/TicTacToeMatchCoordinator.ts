@@ -1,5 +1,6 @@
 import { ITransport, RematchMessagePayload, TransportMessage } from '@/core/transport/types'
 import { WinResult } from '@/core/games/types'
+import { onPageHide } from '@/core/lobby/resume'
 import {
   BestOfSeriesLength,
   RoundStartMessagePayload,
@@ -136,9 +137,57 @@ export class TicTacToeMatchCoordinator {
 
     this.bindTransport()
     this.persistActiveMatch()
+    this.unsubscribers.push(onPageHide(() => this.persistActiveMatch()))
+    // A Guest redials the Host if the link drops, e.g. while the Host reloads.
+    this.transport.setAutoRedial?.(localPlayer.role === 'guest')
+
+    if (options.resumeFrom) {
+      // Restored after a reload: play waits in reconnect grace until the other
+      // Player is back and the Host's sync arrives.
+      this.applySyncState(TicTacToeMatchCoordinator.toSyncState(options.resumeFrom))
+      this.handleRemoteDisconnect()
+      return
+    }
 
     if (!this.state.isBetweenRounds && this.state.status === 'active') {
       this.startTurnTimer()
+    }
+  }
+
+  /** Builds coordinator options that resume a cached Match on `transport`. */
+  public static resumeOptions(
+    cached: CachedTicTacToeMatch,
+    transport: ITransport
+  ): TicTacToeMatchCoordinatorOptions {
+    return {
+      transport,
+      localPlayer: cached.localPlayer,
+      remotePlayer: cached.remotePlayer,
+      bestOf: cached.seriesState.bestOf,
+      startingPlayerId: cached.seriesState.round1StarterId,
+      resumeFrom: cached,
+    }
+  }
+
+  private static toSyncState(cached: CachedTicTacToeMatch): TicTacToeSyncState {
+    return {
+      seriesState: cached.seriesState,
+      currentRoundState: cached.currentRoundState,
+      currentRoundMoves: cached.currentRoundMoves,
+      roundRecords: cached.roundRecords,
+      turnSecondsRemaining: cached.turnSecondsRemaining,
+      isBetweenRounds: cached.isBetweenRounds,
+    }
+  }
+
+  /** The most recent cached Match, if any, regardless of its id. */
+  public static peekCachedMatch(): CachedTicTacToeMatch | null {
+    if (typeof window === 'undefined' || !window.localStorage) return null
+    try {
+      const raw = localStorage.getItem(TICTACTOE_ACTIVE_MATCH_STORAGE_KEY)
+      return raw ? (JSON.parse(raw) as CachedTicTacToeMatch) : null
+    } catch {
+      return null
     }
   }
 
@@ -1047,6 +1096,7 @@ export class TicTacToeMatchCoordinator {
   /* -------------------------------------------------------------------------- */
 
   public destroy(): void {
+    this.transport.setAutoRedial?.(false)
     this.stopTurnTimer()
     this.stopBetweenRoundsTimer()
     this.stopReconnectGraceTimer()

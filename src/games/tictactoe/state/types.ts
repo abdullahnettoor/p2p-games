@@ -87,4 +87,6 @@ export interface TicTacToeMatchCoordinatorOptions {
   onGameOver?: (result: WinResult) => void
   onRematch?: () => void
   initialSyncState?: TicTacToeSyncState
+  /** Restore this cached Match after a page reload (ADR 0005). */
+  resumeFrom?: CachedTicTacToeMatch
 }

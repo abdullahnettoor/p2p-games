@@ -22,6 +22,11 @@ export interface PeerJSTransportOptions {
   onIdCollision?: () => string
   rejectExtraConnections?: boolean
   isStrangerMatch?: boolean
+  /**
+   * Keep the given localPlayerId when the broker still holds it (e.g. right
+   * after a page reload) by retrying instead of failing or picking a new id.
+   */
+  reclaimLocalId?: boolean
 }
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
@@ -33,6 +38,10 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 15000
 const CONNECTION_TIMEOUT_MS = 20000
 const SIGNALING_TIMEOUT_MS = 15000
+const RECLAIM_ID_RETRY_MS = 1500
+const RECLAIM_ID_MAX_RETRIES = 10
+const REDIAL_INTERVAL_MS = 3000
+const REDIAL_WINDOW_MS = 40000
 
 export const PEER_UNAVAILABLE_MESSAGE =
   'The match invite is no longer available. Please ask your friend to create a new match and share the invite.'
@@ -79,7 +88,11 @@ export class PeerJSTransport implements ITransport {
   private onIdCollision?: () => string
   private rejectExtraConnections: boolean
   private isStrangerMatch: boolean
+  private reclaimLocalId: boolean
   private isSignalingReleased = false
+  private autoRedial = false
+  private redialDeadline = 0
+  private redialTimer: ReturnType<typeof setTimeout> | null = null
 
   private peerInstance: any = null
   private connection: any = null
@@ -108,6 +121,57 @@ export class PeerJSTransport implements ITransport {
     this.onIdCollision = options.onIdCollision
     this.rejectExtraConnections = options.rejectExtraConnections ?? false
     this.isStrangerMatch = options.isStrangerMatch ?? false
+    this.reclaimLocalId = options.reclaimLocalId ?? false
+  }
+
+  /**
+   * Guest only: while enabled, a dropped connection to the Host is redialled
+   * for up to REDIAL_WINDOW_MS, so a Match survives the Host reloading its
+   * page. Match coordinators enable this for the length of a Match.
+   */
+  public setAutoRedial(enabled: boolean): void {
+    this.autoRedial = enabled && this.role === 'guest'
+    if (!this.autoRedial) {
+      this.stopRedial()
+    } else if (this.status !== 'connected') {
+      this.redialDeadline = Date.now() + REDIAL_WINDOW_MS
+      this.scheduleRedial()
+    }
+  }
+
+  private scheduleRedial(): void {
+    if (!this.autoRedial || this.isDestroyed || !this.targetPeerId) return
+    if (this.redialTimer) return
+    if (Date.now() > this.redialDeadline) return
+
+    this.redialTimer = setTimeout(() => {
+      this.redialTimer = null
+      if (!this.autoRedial || this.isDestroyed || this.status === 'connected') return
+      const peer = this.peerInstance
+      if (!peer || peer.destroyed || !this.targetPeerId) {
+        this.scheduleRedial()
+        return
+      }
+      try {
+        this.setupConnection(peer.connect(this.targetPeerId, { reliable: true }))
+      } catch {
+        // Retried below
+      }
+      this.scheduleRedial()
+    }, REDIAL_INTERVAL_MS)
+  }
+
+  private stopRedial(): void {
+    if (this.redialTimer) {
+      clearTimeout(this.redialTimer)
+      this.redialTimer = null
+    }
+  }
+
+  private startRedialWindow(): void {
+    if (!this.autoRedial || this.isDestroyed) return
+    this.redialDeadline = Date.now() + REDIAL_WINDOW_MS
+    this.scheduleRedial()
   }
 
   public async connect(): Promise<string> {
@@ -287,6 +351,29 @@ export class PeerJSTransport implements ITransport {
             // reports only if every retry fails. Live DataChannels are unaffected.
             if (hasOpened && TRANSIENT_SIGNALING_ERRORS.has(err?.type)) return
 
+            // Reclaim: the broker still holds our id from before a reload; wait and retry it.
+            if (!hasOpened && err?.type === 'unavailable-id' && this.reclaimLocalId) {
+              cleanupSignalingTimeout()
+              try {
+                peer.destroy()
+              } catch {
+                // ignore
+              }
+              if (this.isDestroyed || isResolved || signalingTimedOut) return
+              if (collisionRetries >= RECLAIM_ID_MAX_RETRIES) {
+                const limitError = new Error('Could not reclaim the previous connection id')
+                this.notifyError(limitError)
+                isResolved = true
+                reject(limitError)
+                return
+              }
+              collisionRetries++
+              setTimeout(() => {
+                if (!this.isDestroyed) initPeer()
+              }, RECLAIM_ID_RETRY_MS)
+              return
+            }
+
             // Host collision on initial open: regenerate ID if collision handler is provided
             if (
               !hasOpened &&
@@ -324,6 +411,14 @@ export class PeerJSTransport implements ITransport {
               collisionRetries++
               this.localPlayerId = this.onIdCollision()
               initPeer()
+              return
+            }
+
+            const rawMessageEarly = err instanceof Error ? err.message : String(err)
+            if (hasOpened && this.autoRedial && isPeerUnavailable(err, rawMessageEarly)) {
+              // The Host hasn't re-registered yet (e.g. it's reloading).
+              this.stopConnectionTimeout()
+              this.scheduleRedial()
               return
             }
 
@@ -466,6 +561,7 @@ export class PeerJSTransport implements ITransport {
     const handleOpen = () => {
       if (this.connection !== conn) return
       this.stopConnectionTimeout()
+      this.stopRedial()
       this.remotePlayerId = conn.peer
       this.setStatus('connected')
       this.startHeartbeat()
@@ -488,7 +584,12 @@ export class PeerJSTransport implements ITransport {
         isRejected = true
         const reason = data.payload?.reason || HOST_REJECTED_MESSAGE
         this.stopConnectionTimeout()
-        this.notifyError(new HostRejectedError(reason))
+        if (this.autoRedial) {
+          // A Host that hasn't noticed our old connection dropping rejects us; try again shortly.
+          this.startRedialWindow()
+        } else {
+          this.notifyError(new HostRejectedError(reason))
+        }
         try {
           conn.close()
         } catch {
@@ -504,6 +605,7 @@ export class PeerJSTransport implements ITransport {
 
     conn.on('close', () => {
       if (this.connection !== conn) return
+      if (this.autoRedial && !isRejected) this.startRedialWindow()
       if (this.status !== 'connected') {
         this.stopConnectionTimeout()
         this.connection = null
@@ -598,6 +700,10 @@ export class PeerJSTransport implements ITransport {
         return
       }
 
+      if (this.autoRedial) {
+        this.startRedialWindow()
+        return
+      }
       this.notifyError(new Error(ICE_FAILURE_MESSAGE))
     }, CONNECTION_TIMEOUT_MS)
   }
@@ -699,6 +805,8 @@ export class PeerJSTransport implements ITransport {
 
     this.isDestroyed = true
     this.isSignalingReleased = false
+    this.autoRedial = false
+    this.stopRedial()
     this.stopHeartbeat()
     this.stopConnectionTimeout()
     this.stopSignalingRetry()

@@ -444,4 +444,31 @@ describe('BingoMatchCoordinator', () => {
     expect(onHostRematch).toHaveBeenCalledTimes(1)
     expect(onGuestRematch).toHaveBeenCalledTimes(1)
   })
+
+  it('a reloaded Guest resumes from the cached history and rejoins the Host', () => {
+    const { hostCoordinator, guestCoordinator, guestTransport, hostBoard } = setupCoordinators()
+    hostCoordinator.submitMove(hostBoard[0])
+
+    const cached = {
+      localPlayer: guestCoordinator.state.localPlayer,
+      remotePlayer: guestCoordinator.state.remotePlayer,
+      status: guestCoordinator.state.gameState.status,
+      history: guestCoordinator.state.gameState.history,
+      turnSecondsRemaining: guestCoordinator.state.turnSecondsRemaining,
+      matchStartEvent: (guestCoordinator as unknown as { matchStartEvent: MatchStartEvent<BingoBoard> })
+        .matchStartEvent,
+      updatedAt: Date.now(),
+    }
+
+    guestCoordinator.destroy()
+    guestTransport.disconnect()
+
+    const resumed = new BingoMatchCoordinator(BingoMatchCoordinator.resumeOptions(cached, guestTransport))
+    expect(resumed.state.isReconnecting).toBe(true)
+    expect(getCalledNumbers(resumed.state.gameState.history)).toEqual([hostBoard[0]])
+
+    guestTransport.connect()
+    expect(resumed.state.isReconnecting).toBe(false)
+    expect(resumed.isMyTurn).toBe(true)
+  })
 })
