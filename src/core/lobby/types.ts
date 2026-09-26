@@ -1,4 +1,5 @@
 import { PlayerRole } from '@/core/games/types'
+import { BestOfSeriesLength } from '@/core/series/types'
 
 export type LobbyStatus =
   | 'idle'
@@ -26,6 +27,7 @@ export interface LobbyState<TSetupConfig = unknown> {
   roomCode?: string | null
   isReconnecting?: boolean
   error: string | null
+  seriesLength?: BestOfSeriesLength
 }
 
 export interface MatchStartEvent<TSetupConfig = unknown> {
@@ -34,4 +36,5 @@ export interface MatchStartEvent<TSetupConfig = unknown> {
   startingPlayerId: string
   hostSetup: TSetupConfig
   guestSetup: TSetupConfig
+  seriesLength?: BestOfSeriesLength
 }

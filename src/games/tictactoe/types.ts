@@ -5,10 +5,19 @@ export type TicTacToeCell = TicTacToeMark | null
 /** Row-major 3x3 grid, always length 9. */
 export type TicTacToeBoard = TicTacToeCell[]
 
-export interface TicTacToeMove {
+export interface TicTacToePlaceMove {
+  type?: 'place'
   cellIndex: number
   playerId: string
 }
+
+export interface TicTacToePassMove {
+  type: 'pass'
+  playerId: string
+  cellIndex?: -1
+}
+
+export type TicTacToeMove = TicTacToePlaceMove | TicTacToePassMove
 
 export interface TicTacToeState {
   board: TicTacToeBoard

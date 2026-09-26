@@ -1,0 +1,40 @@
+.timerBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background-color: var(--ttt-paper);
+  border: 1px dashed var(--ttt-rule);
+  color: var(--ttt-ink);
+  font-family: var(--ttt-font-label);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow: 0 1px 3px var(--ttt-sheet-shadow-soft);
+  transition: all 180ms ease;
+  user-select: none;
+}
+
+.timerUrgent {
+  border-color: var(--ttt-guest-ink);
+  color: var(--ttt-guest-ink);
+  background-color: var(--ttt-cell-pressed);
+  animation: pulse-urgent 800ms infinite ease-in-out;
+}
+
+.clockIcon {
+  width: 14px;
+  height: 14px;
+}
+
+@keyframes pulse-urgent {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.85;
+  }
+}

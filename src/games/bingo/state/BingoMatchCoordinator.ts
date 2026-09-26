@@ -1,3 +1,4 @@
+import { onPageHide } from '@/core/lobby/resume'
 import { ITransport, TransportMessage } from '@/core/transport/types'
 import { MatchStartEvent } from '@/core/lobby/types'
 import { WinResult } from '@/core/games/types'
@@ -30,6 +31,8 @@ export interface BingoMatchCoordinatorOptions {
   onGameOver?: (result: WinResult) => void
   onRematch?: () => void
   enableAutoTurnTimer?: boolean
+  /** Restore this cached Match after a page reload (ADR 0005). */
+  resumeFrom?: CachedBingoMatch
 }
 
 interface BingoSyncState {
@@ -127,7 +130,32 @@ export class BingoMatchCoordinator {
 
     this.persistActiveMatch()
     this.bindTransport()
+    this.unsubscribers.push(onPageHide(() => this.persistActiveMatch()))
+    // A Guest redials the Host if the link drops, e.g. while the Host reloads.
+    this.transport.setAutoRedial?.(localPlayer.role === 'guest')
     this.startTurnTimer()
+
+    if (options.resumeFrom) {
+      // Restored after a reload: replay the cached history, then wait in
+      // reconnect grace until the other Player is back and syncs.
+      this.reconcileState({
+        history: options.resumeFrom.history,
+        turnSecondsRemaining: options.resumeFrom.turnSecondsRemaining,
+      })
+      this.startReconnectionCountdown()
+    }
+  }
+
+  /** Builds coordinator options that resume a cached Match on `transport`. */
+  public static resumeOptions(cached: CachedBingoMatch, transport: ITransport): BingoMatchCoordinatorOptions {
+    return {
+      transport,
+      localPlayer: cached.localPlayer,
+      remotePlayer: cached.remotePlayer,
+      matchStartEvent: cached.matchStartEvent,
+      turnDurationSeconds: 30,
+      resumeFrom: cached,
+    }
   }
 
   public get isMyTurn(): boolean {
@@ -693,6 +721,7 @@ export class BingoMatchCoordinator {
   }
 
   public destroy(): void {
+    this.transport.setAutoRedial?.(false)
     this.pendingForfeitResolve?.()
     this.pendingForfeitResolve = null
     this.stopTurnTimer()

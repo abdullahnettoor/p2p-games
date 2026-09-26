@@ -345,5 +345,10 @@ describe('BingoMatchLobby', () => {
     expect(nameInput).toBeDisabled()
     expect(nameInput).toHaveValue("Swift Otter")
   })
+  it("prevents readying without a valid board arrangement", async () => {
+    const session = await createHostSession()
+    expect(session.state.localPlayer.setupConfig).toBeUndefined()
+    expect(session.canReady()).toBe(false)
+    expect(() => session.setReady(true)).toThrow("Invalid board setup")
+  })
 })
-

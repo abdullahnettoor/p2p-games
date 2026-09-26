@@ -8,6 +8,7 @@ Older work predating this switch lives as Markdown under `.scratch/<feature>/`. 
 
 - One issue per ticket. A spec is an issue with the `spec` label; its implementation tickets link back with `Part of #<spec>` in the body.
 - Triage state is a label (see `triage-labels.md`). An issue carries exactly one triage label at a time.
+- Every issue carries exactly one scope label: `game:<id>` (`game:bingo`, `game:tictactoe`, `game:hangman`) when it only affects that Game, or `cross-game` when it affects more than one Game or the platform (Catalog, transport, shared screens). When a new Game is added, create its `game:<id>` label.
 - Blocking edges go in the body as `Blocked by: #N, #N`.
 - Conversation happens in issue comments.
 

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import styles from './catalog.module.css'
 
-type GameIconName = 'bingo' | 'hangman'
+type GameIconName = 'bingo' | 'hangman' | 'tictactoe'
 
 type CatalogGame = {
   id: GameIconName
@@ -16,6 +16,7 @@ type CatalogGame = {
 
 const GAMES: CatalogGame[] = [
   { id: 'bingo', label: 'Bingo', href: '/bingo' },
+  { id: 'tictactoe', label: 'Tic-Tac-Toe', href: '/tictactoe' },
   { id: 'hangman', label: 'Hangman', comingSoon: true },
 ]
 
@@ -27,6 +28,16 @@ function GameIcon({ name }: { name: GameIconName }) {
         <path d="M69 31v6M69 48v1M69 60v1" />
         <circle cx="69" cy="29" r="9" />
         <path d="M69 38v25M69 45 57 55M69 45l12 10M69 63 58 77M69 63l11 14" />
+      </svg>
+    )
+  }
+
+  if (name === 'tictactoe') {
+    return (
+      <svg viewBox="0 0 96 96" aria-hidden="true" className={styles.gameIcon}>
+        <path d="M36 16v64M60 16v64M16 36h64M16 60h64" />
+        <path d="M22 22l8 8M30 22l-8 8" />
+        <circle cx="70" cy="70" r="5" />
       </svg>
     )
   }

@@ -20,19 +20,22 @@ describe('CatalogPage', () => {
     expect(screen.getByRole('heading', { name: 'Choose a game.' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Bingo' })).toHaveAttribute('href', '/bingo')
     expect(screen.getByRole('link', { name: 'Open Bingo' }).querySelector('svg')).toBeInTheDocument()
+
+    expect(screen.getByRole('link', { name: 'Open Tic-Tac-Toe' })).toHaveAttribute('href', '/tictactoe')
+    expect(screen.getByRole('link', { name: 'Open Tic-Tac-Toe' }).querySelector('svg')).toBeInTheDocument()
   })
 
   it('navigates into the selected Game after the short opening transition', () => {
     vi.useFakeTimers()
     render(<CatalogPage />)
 
-    fireEvent.click(screen.getByRole('link', { name: 'Open Bingo' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Open Tic-Tac-Toe' }))
     expect(navigation.push).not.toHaveBeenCalled()
 
     act(() => {
       vi.advanceTimersByTime(260)
     })
-    expect(navigation.push).toHaveBeenCalledWith('/bingo')
+    expect(navigation.push).toHaveBeenCalledWith('/tictactoe')
   })
 
   it('keeps coming-soon games visible but unavailable', () => {
@@ -40,11 +43,5 @@ describe('CatalogPage', () => {
 
     expect(screen.getByLabelText('Hangman, coming soon')).toHaveTextContent('Soon')
     expect(screen.queryByRole('link', { name: 'Open Hangman' })).not.toBeInTheDocument()
-  })
-
-  it('does not list the TicTacToe connectivity harness', () => {
-    render(<CatalogPage />)
-
-    expect(screen.queryByText(/tic.?tac.?toe/i)).not.toBeInTheDocument()
   })
 })

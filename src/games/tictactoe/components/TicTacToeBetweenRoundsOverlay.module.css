@@ -1,0 +1,117 @@
+.overlayBackdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--ttt-cell-pressed);
+  backdrop-filter: blur(4px);
+  z-index: 40;
+  padding: 16px;
+  animation: fade-in 200ms ease-out forwards;
+}
+
+.modalCard {
+  background-color: var(--ttt-paper);
+  border: 2px solid var(--ttt-rule);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px var(--ttt-sheet-shadow-strong);
+  padding: 24px 20px;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.roundBadge {
+  font-family: var(--ttt-font-label);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ttt-ink-muted);
+}
+
+.resultTitle {
+  font-family: var(--ttt-font-hand);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ttt-ink);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.resultTitleWon {
+  color: var(--ttt-host-ink);
+}
+
+.resultTitleLost {
+  color: var(--ttt-guest-ink);
+}
+
+.scoreBanner {
+  font-family: var(--ttt-font-label);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ttt-ink);
+  background-color: var(--ttt-cell-hover);
+  border: 1px dashed var(--ttt-rule);
+  border-radius: 8px;
+  padding: 6px 12px;
+  width: 100%;
+}
+
+.nextButton {
+  margin-top: 6px;
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background-color: var(--ttt-ink);
+  color: var(--ttt-paper);
+  font-family: var(--ttt-font-label);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 150ms ease;
+}
+
+.nextButton:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.nextButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.nextButton:disabled {
+  background-color: var(--ttt-cell-pressed);
+  color: var(--ttt-ink-muted);
+  cursor: default;
+}
+
+.waitingHostText {
+  font-family: var(--ttt-font-label);
+  font-size: 0.8125rem;
+  color: var(--ttt-ink-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

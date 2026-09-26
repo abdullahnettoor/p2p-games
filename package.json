@@ -14,6 +14,8 @@
     "test:watch": "vitest",
     "test:p2p": "node scripts/p2p-loop.mjs",
     "test:p2p:bingo": "node scripts/bingo-lobby-loop.mjs",
+    "test:visual": "node tests/visual/run-visual-tests.mjs",
+    "test:visual:update": "node tests/visual/run-visual-tests.mjs --update",
     "test:webrtc-env": "node scripts/webrtc-control.mjs",
     "typecheck": "tsc --noEmit"
   },

@@ -1,0 +1,83 @@
+.boardContainer {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.pencilGridSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1px var(--ttt-sheet-shadow-soft));
+}
+
+.pencilStroke {
+  stroke: var(--ttt-pencil);
+  stroke-width: 4;
+  stroke-linecap: round;
+  fill: none;
+  stroke-dasharray: 320;
+  stroke-dashoffset: 0;
+  animation: ttt-line-draw 240ms ease-out forwards;
+}
+
+.cellsGrid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  z-index: 3;
+}
+
+.cellButton {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 150ms ease;
+  outline: none;
+}
+
+.cellButton:enabled:hover {
+  background-color: var(--ttt-cell-hover);
+}
+
+.cellButton:enabled:active {
+  background-color: var(--ttt-cell-pressed);
+}
+
+.cellButton:focus-visible {
+  outline: 3px solid var(--ttt-focus);
+  outline-offset: -2px;
+  border-radius: 6px;
+  z-index: 4;
+}
+
+.cellButton:disabled {
+  cursor: default;
+}
+
+.pencilLine {
+  stroke: var(--ttt-pencil);
+  stroke-width: 4;
+  stroke-linecap: round;
+  fill: none;
+}

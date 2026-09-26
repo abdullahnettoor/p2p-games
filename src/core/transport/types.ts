@@ -1,4 +1,5 @@
 import { PlayerRole } from '@/core/games/types'
+import { BestOfSeriesLength, RoundStartMessagePayload } from '@/core/series/types'
 
 export type TransportStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'closed'
 
@@ -12,6 +13,8 @@ export interface MoveMessagePayload<TMove = unknown> {
   move: TMove
   playerId: string
   timestamp?: number
+  /** Set when the Host passes a timed-out Guest turn on the Guest's behalf. */
+  forcedTimeout?: boolean
 }
 
 export interface ReactionMessagePayload {
@@ -37,11 +40,18 @@ export interface MatchStartMessagePayload {
   startingPlayerId: string
   timestamp: number
   setupConfigs?: Record<string, unknown>
+  seriesLength?: BestOfSeriesLength
+}
+
+export interface SeriesLengthMessagePayload {
+  seriesLength: BestOfSeriesLength
 }
 
 export interface SyncMessagePayload {
   state: unknown
   timestamp: number
+  /** Guest asks the Host to send its state (after reconnecting). */
+  request?: boolean
 }
 
 export type TransportMessage =
@@ -52,6 +62,8 @@ export type TransportMessage =
   | { type: 'heartbeat'; payload: HeartbeatMessagePayload }
   | { type: 'profile'; payload: ProfileMessagePayload }
   | { type: 'match_start'; payload: MatchStartMessagePayload }
+  | { type: 'round_start'; payload: RoundStartMessagePayload }
+  | { type: 'series_length'; payload: SeriesLengthMessagePayload }
   | { type: 'sync'; payload: SyncMessagePayload }
   | { type: 'forfeit'; payload: { playerId: string } }
   | { type: 'forfeit_ack'; payload: { playerId: string } }
@@ -87,5 +99,7 @@ export interface ITransport<TMessage = TransportMessage> {
   onError(handler: ErrorEventHandler): () => void
   onSignalingChange?: (handler: SignalingChangeHandler) => () => void
   releaseSignaling?: () => void
+  /** Guest only: redial the Host after a drop while a Match is live. */
+  setAutoRedial?: (enabled: boolean) => void
   disconnect(): void
 }

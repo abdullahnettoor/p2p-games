@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react'
 import styles from './BingoMatchLobby.module.css'
+import '../bingoTokens.css'
 
 export interface BingoMatchLobbyProps {
   session: LobbySession<BingoBoard>
