@@ -1,4 +1,5 @@
 import { PlayerRole } from '@/core/games/types'
+import { RoundStartMessagePayload } from '@/core/series/types'
 
 export type TransportStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'closed'
 
@@ -37,6 +38,7 @@ export interface MatchStartMessagePayload {
   startingPlayerId: string
   timestamp: number
   setupConfigs?: Record<string, unknown>
+  seriesLength?: 1 | 3 | 5
 }
 
 export interface SyncMessagePayload {
@@ -52,6 +54,7 @@ export type TransportMessage =
   | { type: 'heartbeat'; payload: HeartbeatMessagePayload }
   | { type: 'profile'; payload: ProfileMessagePayload }
   | { type: 'match_start'; payload: MatchStartMessagePayload }
+  | { type: 'round_start'; payload: RoundStartMessagePayload }
   | { type: 'sync'; payload: SyncMessagePayload }
   | { type: 'forfeit'; payload: { playerId: string } }
   | { type: 'forfeit_ack'; payload: { playerId: string } }
