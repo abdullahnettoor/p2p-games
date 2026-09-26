@@ -1,0 +1,525 @@
+/*
+  Shared Entry Flow CSS Module
+  Consumes strictly approved --entry-* tokens from the design guardrail contract.
+  Approved tokens:
+    --entry-surface
+    --entry-surface-raised
+    --entry-ink
+    --entry-ink-muted
+    --entry-accent
+    --entry-accent-guest
+    --entry-warning
+    --entry-rule
+    --entry-focus
+    --entry-urgent
+    --entry-font-label
+*/
+
+.entrySurface {
+  position: relative;
+  display: flex;
+  min-height: 100dvh;
+  justify-content: center;
+  padding: 0.5rem 1rem 1.5rem;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(200, 160, 90, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(26, 75, 122, 0.06) 0%, transparent 60%),
+    linear-gradient(178deg, var(--entry-surface) 0%, var(--entry-surface) 100%);
+  color: var(--entry-ink);
+  font-family: inherit;
+}
+
+.entryInner {
+  display: flex;
+  width: 100%;
+  max-width: 28.75rem;
+  flex-direction: column;
+}
+
+/* Header utility bar */
+.utilityBar {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.utilityButton,
+.rulesButton {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid var(--entry-rule);
+  border-radius: 0.5rem;
+  background: var(--entry-surface-raised);
+  color: var(--entry-ink);
+  font-family: var(--entry-font-label, inherit);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.utilityButton:focus-visible,
+.rulesButton:focus-visible {
+  outline: 3px solid var(--entry-focus);
+  outline-offset: 2px;
+}
+
+.shellTitle {
+  margin: 0;
+  font-size: clamp(1.35rem, 7vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  color: var(--entry-ink);
+}
+
+.utilityGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Rules Sheet / Modal */
+.rulesSheet {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(39, 49, 58, 0.38);
+}
+
+.rulesPanel {
+  width: min(100%, 27rem);
+  border: 1px solid var(--entry-rule);
+  border-radius: 0.875rem;
+  padding: 1.25rem;
+  background: var(--entry-surface);
+  color: var(--entry-ink);
+  box-shadow: 0 18px 50px rgba(20, 37, 43, 0.18);
+}
+
+.rulesHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--entry-rule);
+  padding-bottom: 0.75rem;
+}
+
+.rulesHeading {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.rulesClose {
+  display: inline-grid;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  place-items: center;
+  border: 1px solid var(--entry-rule);
+  border-radius: 0.5rem;
+  background: var(--entry-surface-raised);
+  color: var(--entry-ink);
+  cursor: pointer;
+}
+
+.rulesClose:focus-visible {
+  outline: 3px solid var(--entry-focus);
+  outline-offset: 2px;
+}
+
+.rulesPanel ul {
+  margin: 1rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--entry-ink-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.inviteReason {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: var(--entry-ink-muted);
+}
+
+/* Choice Screen Styles */
+.choiceSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.choiceHeader {
+  text-align: center;
+}
+
+.choiceHeading {
+  margin: 0;
+  font-size: clamp(1.25rem, 5vw, 1.6rem);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: var(--entry-ink);
+}
+
+.choiceSubheading {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--entry-ink-muted);
+  line-height: 1.4;
+}
+
+.choiceList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.choiceCard {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid var(--entry-rule);
+  border-radius: 0.875rem;
+  padding: 1rem 1.15rem;
+  background: var(--entry-surface-raised);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+}
+
+.choiceCard:hover {
+  border-color: var(--entry-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(20, 37, 43, 0.12);
+}
+
+.choiceCard:active {
+  transform: scale(0.99);
+}
+
+.choiceCard:focus-visible {
+  outline: 3px solid var(--entry-focus);
+  outline-offset: 2px;
+}
+
+.choiceIconWrapper {
+  display: flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+}
+
+.choiceIconWrapper[data-variant="create"],
+.choiceCard[data-variant="create"] .choiceIconWrapper {
+  background: color-mix(in srgb, var(--entry-accent) 10%, transparent);
+  color: var(--entry-accent);
+}
+
+.choiceIconWrapper[data-variant="join"],
+.choiceCard[data-variant="join"] .choiceIconWrapper {
+  background: color-mix(in srgb, var(--entry-accent-guest) 10%, transparent);
+  color: var(--entry-accent-guest);
+}
+
+.choiceIconWrapper[data-variant="stranger"],
+.choiceCard[data-variant="stranger"] .choiceIconWrapper {
+  background: color-mix(in srgb, var(--entry-warning) 10%, transparent);
+  color: var(--entry-warning);
+}
+
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.choiceTitle {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: var(--entry-ink);
+}
+
+.choiceDesc {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--entry-ink-muted);
+  line-height: 1.35;
+}
+
+/* Join with Code Screen Styles */
+.joinCodeCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 1rem;
+  border: 1px solid var(--entry-rule);
+  border-radius: 0.875rem;
+  padding: 1.75rem 1.25rem;
+  background: var(--entry-surface);
+  box-shadow: 0 18px 50px rgba(20, 37, 43, 0.18);
+  text-align: center;
+}
+
+.joinCodeHeading {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: var(--entry-ink);
+}
+
+.joinCodeSubheading {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--entry-ink-muted);
+  line-height: 1.35;
+}
+
+.joinCodeForm {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.joinCodeInputLarge {
+  width: min(100%, 15rem);
+  height: 3.25rem;
+  border: 2px solid var(--entry-rule);
+  border-radius: 0.75rem;
+  background: var(--entry-surface-raised);
+  font-family: monospace;
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--entry-ink);
+  transition: border-color 0.15s ease;
+}
+
+.joinCodeInputLarge:focus-visible {
+  outline: 3px solid var(--entry-focus);
+  border-color: var(--entry-accent-guest);
+}
+
+.joinCodeSubmit {
+  display: inline-flex;
+  min-height: 2.75rem;
+  width: min(100%, 15rem);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--entry-accent-guest);
+  border-radius: 999px;
+  background: var(--entry-accent-guest);
+  color: white;
+  font-family: var(--entry-font-label, inherit);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.joinCodeSubmit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.joinCodeSubmit:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.joinCodeSubmit:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.joinCodeSubmit:focus-visible {
+  outline: 3px solid var(--entry-focus);
+  outline-offset: 2px;
+}
+
+.joinCodeError {
+  margin: 0;
+  color: var(--entry-urgent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* Stranger Search Screen Styles */
+.strangerSearchCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 1rem;
+  border: 1px solid var(--entry-rule);
+  border-radius: 0.875rem;
+  padding: 2rem 1.5rem;
+  background: var(--entry-surface);
+  box-shadow: 0 18px 50px rgba(20, 37, 43, 0.18);
+  text-align: center;
+}
+
+.strangerSearchPulse {
+  display: flex;
+  width: 4.5rem;
+  height: 4.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--entry-warning) 10%, transparent);
+  color: var(--entry-warning);
+}
+
+.strangerSearchPulse[data-status="error"] {
+  background: color-mix(in srgb, var(--entry-urgent) 10%, transparent);
+  color: var(--entry-urgent);
+}
+
+.strangerSearchPulse[data-status="timeout"] {
+  background: color-mix(in srgb, var(--entry-ink-muted) 10%, transparent);
+  color: var(--entry-ink-muted);
+}
+
+.strangerTimer {
+  font-family: monospace;
+  font-size: 2.25rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--entry-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.strangerCancelBtn {
+  min-height: 2.75rem;
+  width: min(100%, 14rem);
+  border: 1px solid var(--entry-rule);
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  background: var(--entry-surface-raised);
+  color: var(--entry-ink);
+  font-family: var(--entry-font-label, inherit);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.strangerCancelBtn:hover {
+  background: var(--entry-surface-raised);
+}
+
+.strangerCancelBtn:focus-visible {
+  outline: 3px solid var(--entry-focus);
+  outline-offset: 2px;
+}
+
+.strangerTimeoutActions {
+  display: flex;
+  width: min(100%, 16rem);
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.strangerPrimaryBtn {
+  display: inline-flex;
+  min-height: 2.75rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--entry-accent);
+  border-radius: 999px;
+  background: var(--entry-accent);
+  color: white;
+  font-family: var(--entry-font-label, inherit);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.strangerPrimaryBtn:hover {
+  opacity: 0.92;
+}
+
+.strangerPrimaryBtn:focus-visible {
+  outline: 3px solid var(--entry-focus);
+  outline-offset: 2px;
+}
+
+.strangerSecondaryBtn {
+  display: inline-flex;
+  min-height: 2.75rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--entry-rule);
+  border-radius: 999px;
+  background: var(--entry-surface-raised);
+  color: var(--entry-ink);
+  font-family: var(--entry-font-label, inherit);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.strangerSecondaryBtn:focus-visible {
+  outline: 3px solid var(--entry-focus);
+  outline-offset: 2px;
+}
+
+.strangerTertiaryBtn {
+  border: 0;
+  background: transparent;
+  color: var(--entry-ink-muted);
+  font-family: var(--entry-font-label, inherit);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+.strangerTertiaryBtn:hover {
+  color: var(--entry-ink);
+}
+
+@media (max-width: 24.5rem) {
+  .entrySurface { padding: 0.25rem 0.5rem; }
+  .utilityBar { min-height: 2.25rem; margin-bottom: 0.25rem; }
+  .utilityButton, .rulesButton { min-height: 2.25rem; }
+  .utilityButton span { display: none; }
+  .shellTitle { font-size: 1.25rem; }
+  .choiceCard { padding: 0.85rem 0.9rem; }
+  .choiceIconWrapper { width: 2.35rem; height: 2.35rem; }
+  .joinCodeCard { padding: 1.25rem 0.85rem; }
+  .strangerSearchCard { padding: 1.5rem 1rem; }
+}

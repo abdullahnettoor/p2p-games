@@ -20,7 +20,22 @@
   --bingo-rule-strong: rgba(39, 49, 58, 0.3);
   --bingo-paper-overlay: rgba(255, 255, 255, 0.78);
   --bingo-font-print: "Avenir Next", Avenir, "Trebuchet MS", sans-serif;
+  --bingo-font-body: var(--bingo-font-print);
   --bingo-font-label: "Arial Narrow", "Avenir Next Condensed", sans-serif;
+
+  /* Shared Entry-Screen Contract Mapping */
+  --entry-surface: var(--bingo-paper);
+  --entry-surface-raised: var(--bingo-paper-raised);
+  --entry-ink: var(--bingo-graphite);
+  --entry-ink-muted: var(--bingo-graphite-muted);
+  --entry-accent: var(--bingo-host-ink);
+  --entry-accent-guest: var(--bingo-guest-ink);
+  --entry-warning: var(--bingo-warning);
+  --entry-rule: var(--bingo-rule);
+  --entry-focus: var(--bingo-focus);
+  --entry-urgent: var(--bingo-urgent);
+  --entry-font-label: var(--bingo-font-label);
+
   color: var(--bingo-graphite);
   font-family: var(--bingo-font-print);
 }
