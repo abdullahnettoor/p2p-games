@@ -1,9 +1,12 @@
 import { useSyncExternalStore, useCallback } from 'react'
 import { LobbyCoordinator } from './LobbyCoordinator'
 import { LobbyState } from './types'
+import { BestOfSeriesLength } from '@/core/series'
 
 export function useLobby<TSetupConfig = unknown>(coordinator: LobbyCoordinator<TSetupConfig>): {
   state: LobbyState<TSetupConfig>
+  seriesLength: BestOfSeriesLength
+  setSeriesLength: (length: BestOfSeriesLength) => void
   updatePlayerName: (name: string) => void
   updateBoardSetup: (setup: TSetupConfig) => void
   setReady: (isReady: boolean) => void
@@ -35,8 +38,15 @@ export function useLobby<TSetupConfig = unknown>(coordinator: LobbyCoordinator<T
     [coordinator]
   )
 
+  const setSeriesLength = useCallback(
+    (length: BestOfSeriesLength) => coordinator.setSeriesLength(length),
+    [coordinator]
+  )
+
   return {
     state,
+    seriesLength: state.seriesLength ?? coordinator.seriesLength,
+    setSeriesLength,
     updatePlayerName,
     updateBoardSetup,
     setReady,

@@ -3,7 +3,12 @@ import { StrangerMatchmaker, StrangerMatchResult } from '@/core/matchmaking/stra
 import { PlayerRole } from '@/core/games/types'
 import { EntryScreen } from './types'
 
-export interface UseOnlineEntryFlowOptions<TLobby> {
+export interface EntryLobbyLifecycle {
+  start?: () => Promise<void> | void
+  destroy: () => void
+}
+
+export interface UseOnlineEntryFlowOptions<TLobby extends EntryLobbyLifecycle> {
   gameId: string
   initialAction?: 'create' | null
   initialRoomCode?: string | null
@@ -12,7 +17,6 @@ export interface UseOnlineEntryFlowOptions<TLobby> {
   createStrangerLobby: (result: StrangerMatchResult) => TLobby
   startLobby?: (lobby: TLobby) => void | Promise<void>
   destroyLobby?: (lobby: TLobby) => void
-  onExit?: () => void
 }
 
 export function updateEntryBrowserUrl(url: string) {
@@ -43,7 +47,7 @@ export function getEntryUrlParams(customSearch?: string): {
   }
 }
 
-export function useOnlineEntryFlow<TLobby>({
+export function useOnlineEntryFlow<TLobby extends EntryLobbyLifecycle>({
   gameId,
   initialAction,
   initialRoomCode,
@@ -52,21 +56,19 @@ export function useOnlineEntryFlow<TLobby>({
   createStrangerLobby,
   startLobby,
   destroyLobby,
-  onExit,
 }: UseOnlineEntryFlowOptions<TLobby>) {
   // Resolve target (room or match) and action from explicit options or URL parameters
   const explicitTarget = initialRoomCode || initialMatchId || null
   const explicitAction = initialAction ?? null
 
-  const resolvedTarget =
-    explicitTarget ||
-    (initialRoomCode === undefined && initialMatchId === undefined
-      ? getEntryUrlParams().roomOrMatch
-      : null)
+  // Read URL query parameters once per render only when explicit props are omitted
+  const urlParams =
+    initialRoomCode === undefined && initialMatchId === undefined && initialAction === undefined
+      ? getEntryUrlParams()
+      : null
 
-  const resolvedAction =
-    explicitAction ||
-    (initialAction === undefined ? getEntryUrlParams().action : null)
+  const resolvedTarget = explicitTarget || urlParams?.roomOrMatch || null
+  const resolvedAction = explicitAction || urlParams?.action || null
 
   const getInitialScreen = (): EntryScreen => {
     if (resolvedTarget) return 'guest-lobby'
@@ -85,47 +87,83 @@ export function useOnlineEntryFlow<TLobby>({
   const lobbyRef = useRef<TLobby | null>(null)
   const strangerMatchmakerRef = useRef<StrangerMatchmaker | null>(null)
   const searchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const initialLobbyCreatedRef = useRef(false)
+  const destroyedLobbiesRef = useRef(new WeakSet<TLobby>())
+  const startedLobbiesRef = useRef(new WeakSet<TLobby>())
 
   const startLobbyRef = useRef(startLobby)
   startLobbyRef.current = startLobby
   const destroyLobbyRef = useRef(destroyLobby)
   destroyLobbyRef.current = destroyLobby
 
-  const clearSearchTimer = () => {
+  const clearSearchTimer = useCallback(() => {
     if (searchIntervalRef.current) {
       clearInterval(searchIntervalRef.current)
       searchIntervalRef.current = null
     }
-  }
+  }, [])
 
-  // Initial lobby coordinator is created if initial target (room/match) or create action is present
-  const [lobbyCoordinator, setLobbyCoordinator] = useState<TLobby | null>(() => {
+  const cancelStrangerSearch = useCallback(() => {
+    clearSearchTimer()
+    const matchmaker = strangerMatchmakerRef.current
+    strangerMatchmakerRef.current = null
+    matchmaker?.cancel()
+  }, [clearSearchTimer])
+
+  const [lobbyCoordinator, setLobbyCoordinator] = useState<TLobby | null>(null)
+
+  // Initialize friend lobby in an effect to avoid side-effects in useState initializers (StrictMode-safe)
+  useEffect(() => {
+    if (initialLobbyCreatedRef.current) return
+    initialLobbyCreatedRef.current = true
+
     if (resolvedTarget) {
-      return createFriendLobby('guest', resolvedTarget)
+      const lobby = createFriendLobby('guest', resolvedTarget)
+      setLobbyCoordinator(lobby)
+    } else if (resolvedAction === 'create') {
+      const lobby = createFriendLobby('host')
+      setLobbyCoordinator(lobby)
     }
-    if (resolvedAction === 'create') {
-      return createFriendLobby('host')
-    }
-    return null
-  })
+  }, [resolvedTarget, resolvedAction, createFriendLobby])
 
   // Manage lobby lifecycle
   useEffect(() => {
     if (!lobbyCoordinator) return
+    if (destroyedLobbiesRef.current.has(lobbyCoordinator)) {
+      return
+    }
+    if (startedLobbiesRef.current.has(lobbyCoordinator)) {
+      return
+    }
+    startedLobbiesRef.current.add(lobbyCoordinator)
+
+    let cancelled = false
     activeRef.current = true
     lobbyRef.current = lobbyCoordinator
 
-    if (startLobbyRef.current) {
-      startLobbyRef.current(lobbyCoordinator)
-    } else if (typeof (lobbyCoordinator as any).start === 'function') {
-      ;(lobbyCoordinator as any).start().catch(() => {})
+    const initLobby = async () => {
+      try {
+        if (startLobbyRef.current) {
+          await startLobbyRef.current(lobbyCoordinator)
+        } else if (typeof lobbyCoordinator.start === 'function') {
+          await lobbyCoordinator.start()
+        }
+      } catch (err) {
+        if (!cancelled && activeRef.current) {
+          console.error('[useOnlineEntryFlow] Failed to start lobby:', err)
+        }
+      }
     }
 
+    initLobby()
+
     return () => {
+      cancelled = true
+      destroyedLobbiesRef.current.add(lobbyCoordinator)
       if (destroyLobbyRef.current) {
         destroyLobbyRef.current(lobbyCoordinator)
-      } else if (typeof (lobbyCoordinator as any).destroy === 'function') {
-        ;(lobbyCoordinator as any).destroy()
+      } else if (typeof lobbyCoordinator.destroy === 'function') {
+        lobbyCoordinator.destroy()
       }
       if (lobbyRef.current === lobbyCoordinator) {
         lobbyRef.current = null
@@ -137,66 +175,50 @@ export function useOnlineEntryFlow<TLobby>({
   useEffect(() => {
     activeRef.current = true
     const handleBeforeUnload = () => {
-      strangerMatchmakerRef.current?.cancel()
+      cancelStrangerSearch()
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
       activeRef.current = false
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      clearSearchTimer()
-      strangerMatchmakerRef.current?.cancel()
-      strangerMatchmakerRef.current = null
+      cancelStrangerSearch()
     }
-  }, [])
+  }, [cancelStrangerSearch])
 
   const handleCreateRoom = useCallback(() => {
-    clearSearchTimer()
-    strangerMatchmakerRef.current?.cancel()
-    strangerMatchmakerRef.current = null
+    cancelStrangerSearch()
     setIsStrangerMatch(false)
     updateEntryBrowserUrl(`/${gameId}?action=create`)
     const lobby = createFriendLobby('host')
     setLobbyCoordinator(lobby)
     setScreen('create-room')
-  }, [gameId, createFriendLobby])
+  }, [gameId, createFriendLobby, cancelStrangerSearch])
 
   const handleOpenJoinCode = useCallback(() => {
+    cancelStrangerSearch()
     setLobbyCoordinator(null)
     setJoinCodeError(null)
     setScreen('join-code')
     updateEntryBrowserUrl(`/${gameId}`)
-  }, [gameId])
+  }, [gameId, cancelStrangerSearch])
 
   const handleJoinCodeSubmit = useCallback(
     (cleanCode: string) => {
+      cancelStrangerSearch()
       setIsStrangerMatch(false)
       updateEntryBrowserUrl(`/${gameId}?room=${encodeURIComponent(cleanCode)}`)
       const lobby = createFriendLobby('guest', cleanCode)
       setLobbyCoordinator(lobby)
       setScreen('guest-lobby')
     },
-    [gameId, createFriendLobby]
+    [gameId, createFriendLobby, cancelStrangerSearch]
   )
 
-  const handleTryAnotherCode = useCallback(() => {
-    setLobbyCoordinator(null)
-    setJoinCodeError(null)
-    setScreen('join-code')
-    updateEntryBrowserUrl(`/${gameId}`)
-  }, [gameId])
-
-  const cancelStrangerSearch = useCallback(() => {
-    clearSearchTimer()
-    const matchmaker = strangerMatchmakerRef.current
-    strangerMatchmakerRef.current = null
-    matchmaker?.cancel()
-  }, [])
+  const handleTryAnotherCode = handleOpenJoinCode
 
   const startStrangerSearch = useCallback(async () => {
     setLobbyCoordinator(null)
-    clearSearchTimer()
-    strangerMatchmakerRef.current?.cancel()
-    strangerMatchmakerRef.current = null
+    cancelStrangerSearch()
 
     setStrangerStatus('searching')
     setStrangerError(null)
@@ -237,7 +259,7 @@ export function useOnlineEntryFlow<TLobby>({
         setStrangerError(message)
       }
     }
-  }, [gameId, createStrangerLobby])
+  }, [gameId, createStrangerLobby, cancelStrangerSearch, clearSearchTimer])
 
   const handleCancelStrangerSearch = useCallback(() => {
     cancelStrangerSearch()

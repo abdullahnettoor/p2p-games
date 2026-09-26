@@ -1,6 +1,11 @@
 import { ITransport, TransportMessage } from '@/core/transport/types'
 import { LobbyPlayer, LobbyState, LobbyStatus, MatchStartEvent } from './types'
 import { extractRoomCode } from './roomCode'
+import {
+  BestOfSeriesLength,
+  DEFAULT_SERIES_LENGTH,
+  isValidSeriesLength,
+} from '@/core/series'
 
 export const PLAYER_NAME_STORAGE_KEY = 'games:player:name'
 
@@ -29,10 +34,12 @@ export interface LobbyCoordinatorOptions<TSetupConfig = unknown> {
   inviteUrlGenerator?: (matchId: string) => string
   validateSetup?: (config: TSetupConfig) => boolean
   onMatchStart?: (event: MatchStartEvent<TSetupConfig>) => void
+  initialSeriesLength?: BestOfSeriesLength
 }
 
 export class LobbyCoordinator<TSetupConfig = unknown> {
   public state: LobbyState<TSetupConfig>
+  public seriesLength: BestOfSeriesLength
   private transport: ITransport
   private validateSetup?: (config: TSetupConfig) => boolean
   private onMatchStart?: (event: MatchStartEvent<TSetupConfig>) => void
@@ -45,6 +52,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     this.validateSetup = options.validateSetup
     this.onMatchStart = options.onMatchStart
     this.inviteUrlGenerator = options.inviteUrlGenerator
+    this.seriesLength = options.initialSeriesLength ?? DEFAULT_SERIES_LENGTH
 
     const defaultName =
       options.playerName ||
@@ -65,6 +73,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       roomCode: options.roomCode ?? extractRoomCode(this.transport.localPlayerId),
       isReconnecting: false,
       error: null,
+      seriesLength: this.seriesLength,
     }
 
     this.bindTransportEvents()
@@ -136,6 +145,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       roomCode: derivedRoomCode ?? this.state.roomCode,
       isReconnecting: false,
       error: null,
+      seriesLength: this.seriesLength,
       localPlayer: {
         ...this.state.localPlayer,
         id: peerId,
@@ -199,6 +209,40 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     }
   }
 
+  public setSeriesLength(length: BestOfSeriesLength): void {
+    if (!isValidSeriesLength(length)) {
+      throw new Error(`Invalid series length: ${length}`)
+    }
+    if (this.seriesLength === length) return
+
+    this.seriesLength = length
+
+    // Changing series length un-readies both players
+    this.state = {
+      ...this.state,
+      seriesLength: length,
+      localPlayer: {
+        ...this.state.localPlayer,
+        isReady: false,
+      },
+      remotePlayer: this.state.remotePlayer
+        ? {
+            ...this.state.remotePlayer,
+            isReady: false,
+          }
+        : null,
+    }
+    this.notify()
+
+    if (this.transport.status === 'connected') {
+      this.transport.send({
+        type: 'series_length',
+        payload: { seriesLength: length },
+      })
+      this.sendReadyMessage(false, this.state.localPlayer.setupConfig)
+    }
+  }
+
   public updatePlayerName(name: string): void {
     const trimmed = name.trim()
     if (!trimmed) return
@@ -241,10 +285,13 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
   }
 
   public canReady(): boolean {
-    if (!this.state.localPlayer.setupConfig) return false
-    if (this.validateSetup) {
-      return this.validateSetup(this.state.localPlayer.setupConfig)
+    if (!this.state.localPlayer.name || !this.state.localPlayer.name.trim()) {
+      return false
     }
+    if (this.validateSetup) {
+      return Boolean(this.validateSetup(this.state.localPlayer.setupConfig as TSetupConfig))
+    }
+    if (this.state.localPlayer.setupConfig === undefined) return false
     return true
   }
 
@@ -270,6 +317,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     this.state = {
       ...this.state,
       status: this.transport.status === 'connected' ? 'connected' : 'waiting',
+      seriesLength: this.seriesLength,
       localPlayer: {
         ...this.state.localPlayer,
         isReady: false,
@@ -305,7 +353,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       // Validate both local and remote board configurations before launching
       const isRemoteSetupValid =
         !this.validateSetup ||
-        (remotePlayer.setupConfig && this.validateSetup(remotePlayer.setupConfig))
+        Boolean(this.validateSetup(remotePlayer.setupConfig as TSetupConfig))
 
       if (!isRemoteSetupValid) {
         return
@@ -321,6 +369,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
           startingPlayerId,
           hostSetup: localPlayer.setupConfig as TSetupConfig,
           guestSetup: remotePlayer.setupConfig as TSetupConfig,
+          seriesLength: this.seriesLength,
         }
 
         this.transport.send({
@@ -328,6 +377,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
           payload: {
             startingPlayerId,
             timestamp: Date.now(),
+            seriesLength: this.seriesLength,
             setupConfigs: {
               [localPlayer.id]: localPlayer.setupConfig,
               [remotePlayer.id]: remotePlayer.setupConfig,
@@ -361,6 +411,32 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
             },
           }
           this.notify()
+        }
+        break
+      }
+      case 'series_length': {
+        const length = message.payload.seriesLength
+        if (isValidSeriesLength(length)) {
+          this.seriesLength = length
+          // Changing series length un-readies both players
+          this.state = {
+            ...this.state,
+            seriesLength: length,
+            localPlayer: {
+              ...this.state.localPlayer,
+              isReady: false,
+            },
+            remotePlayer: this.state.remotePlayer
+              ? {
+                  ...this.state.remotePlayer,
+                  isReady: false,
+                }
+              : null,
+          }
+          this.notify()
+          if (this.transport.status === 'connected') {
+            this.sendReadyMessage(false, this.state.localPlayer.setupConfig)
+          }
         }
         break
       }
@@ -400,12 +476,18 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
             ? localPlayer.setupConfig
             : payload.setupConfigs?.[guestId] ?? remotePlayer.setupConfig) as TSetupConfig
 
+          const receivedSeriesLength = payload.seriesLength ?? this.seriesLength
+          if (isValidSeriesLength(receivedSeriesLength)) {
+            this.seriesLength = receivedSeriesLength
+          }
+
           this.transitionToMatchStart({
             hostId,
             guestId,
             startingPlayerId: payload.startingPlayerId,
             hostSetup,
             guestSetup,
+            seriesLength: this.seriesLength,
           })
         }
         break
@@ -435,7 +517,14 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
       payload: { playerName: this.state.localPlayer.name },
     })
 
-    if (this.state.localPlayer.setupConfig) {
+    if (this.transport.role === 'host') {
+      this.transport.send({
+        type: 'series_length',
+        payload: { seriesLength: this.seriesLength },
+      })
+    }
+
+    if (this.state.localPlayer.setupConfig !== undefined) {
       this.sendReadyMessage(this.state.localPlayer.isReady, this.state.localPlayer.setupConfig)
     }
   }

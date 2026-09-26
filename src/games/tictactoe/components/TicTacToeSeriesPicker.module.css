@@ -1,0 +1,101 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background-color: var(--ttt-paper-raised, #ffffff);
+  border: 1px solid var(--ttt-rule-soft, #dbe2de);
+  border-radius: 0.75rem;
+  box-shadow: 0 2px 8px var(--ttt-sheet-shadow-soft, rgba(20, 35, 30, 0.08));
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label {
+  font-family: var(--ttt-font-label, "Arial Narrow", sans-serif);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ttt-ink-muted, #5e6b69);
+}
+
+.guestBadge {
+  font-family: var(--ttt-font-print, sans-serif);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--ttt-host-ink, #155a96);
+  background-color: color-mix(in srgb, var(--ttt-host-ink, #155a96) 10%, transparent);
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--ttt-host-ink, #155a96) 25%, transparent);
+}
+
+.buttonGroup {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.optionButton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.5rem 0.25rem;
+  font-family: var(--ttt-font-print, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ttt-ink, #202930);
+  background-color: var(--ttt-paper, #f8faf6);
+  border: 1.5px solid var(--ttt-rule-soft, #dbe2de);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.optionButton:hover:not(:disabled) {
+  border-color: var(--ttt-host-ink, #155a96);
+  background-color: color-mix(in srgb, var(--ttt-host-ink, #155a96) 5%, var(--ttt-paper, #f8faf6));
+}
+
+.optionButton:focus-visible {
+  outline: 2px solid var(--ttt-focus, #087e8b);
+  outline-offset: 2px;
+}
+
+.optionButtonSelected {
+  color: #ffffff;
+  background-color: var(--ttt-host-ink, #155a96);
+  border-color: var(--ttt-host-ink, #155a96);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--ttt-host-ink, #155a96) 35%, transparent);
+}
+
+.optionButtonSelected:hover:not(:disabled) {
+  background-color: var(--ttt-host-ink, #155a96);
+  border-color: var(--ttt-host-ink, #155a96);
+}
+
+.optionButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.optionSubtext {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.helperText {
+  font-family: var(--ttt-font-print, sans-serif);
+  font-size: 0.75rem;
+  color: var(--ttt-ink-muted, #5e6b69);
+  margin-top: 0.125rem;
+}

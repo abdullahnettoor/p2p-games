@@ -164,7 +164,6 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     initialMatchId,
     createFriendLobby,
     createStrangerLobby,
-    onExit,
   })
 
   handleBackToChoiceRef.current = handleBackToChoice

@@ -10,6 +10,7 @@ import {
   useOnlineEntryFlow,
   getEntryUrlParams,
   EntryRulesConfig,
+  EntryLobbyLifecycle,
 } from './index'
 
 describe('Shared Entry Components', () => {
@@ -224,9 +225,15 @@ describe('Shared Entry Components', () => {
   })
 
   describe('useOnlineEntryFlow', () => {
+    interface MockLobby extends EntryLobbyLifecycle {
+      role: string
+      code?: string
+      target?: string
+    }
+
     it('delays lobby creation until an action is selected', () => {
-      const createFriendLobby = vi.fn((role: string) => ({ role, destroyed: false }))
-      const createStrangerLobby = vi.fn((_res) => ({ role: 'stranger', destroyed: false }))
+      const createFriendLobby = vi.fn((role: string): MockLobby => ({ role, destroy: vi.fn() }))
+      const createStrangerLobby = vi.fn((_res): MockLobby => ({ role: 'stranger', destroy: vi.fn() }))
 
       const { result } = renderHook(() =>
         useOnlineEntryFlow({
@@ -246,7 +253,7 @@ describe('Shared Entry Components', () => {
         result.current.handleCreateRoom()
       })
       expect(result.current.screen).toBe('create-room')
-      expect(result.current.lobbyCoordinator).toEqual({ role: 'host', destroyed: false })
+      expect(result.current.lobbyCoordinator?.role).toBe('host')
       expect(createFriendLobby).toHaveBeenCalledWith('host')
 
       // Back to choice tears down lobby
@@ -258,8 +265,15 @@ describe('Shared Entry Components', () => {
     })
 
     it('creates lobby immediately when initialRoomCode or initialAction is passed', () => {
-      const createFriendLobby = vi.fn((role: string, code?: string) => ({ role, code }))
-      const createStrangerLobby = vi.fn((_res) => ({ role: 'stranger', code: undefined }))
+      const createFriendLobby = vi.fn((role: string, code?: string): MockLobby => ({
+        role,
+        code,
+        destroy: vi.fn(),
+      }))
+      const createStrangerLobby = vi.fn((_res): MockLobby => ({
+        role: 'stranger',
+        destroy: vi.fn(),
+      }))
 
       const { result } = renderHook(() =>
         useOnlineEntryFlow({
@@ -271,13 +285,21 @@ describe('Shared Entry Components', () => {
       )
 
       expect(result.current.screen).toBe('guest-lobby')
-      expect(result.current.lobbyCoordinator).toEqual({ role: 'guest', code: 'XYZ789' })
+      expect(result.current.lobbyCoordinator?.role).toBe('guest')
+      expect(result.current.lobbyCoordinator?.code).toBe('XYZ789')
       expect(createFriendLobby).toHaveBeenCalledWith('guest', 'XYZ789')
     })
 
     it('creates guest lobby immediately when initialMatchId is passed', () => {
-      const createFriendLobby = vi.fn((role: string, target?: string) => ({ role, target }))
-      const createStrangerLobby = vi.fn((_res) => ({ role: 'stranger' }))
+      const createFriendLobby = vi.fn((role: string, target?: string): MockLobby => ({
+        role,
+        target,
+        destroy: vi.fn(),
+      }))
+      const createStrangerLobby = vi.fn((_res): MockLobby => ({
+        role: 'stranger',
+        destroy: vi.fn(),
+      }))
 
       const { result } = renderHook(() =>
         useOnlineEntryFlow({
@@ -289,15 +311,23 @@ describe('Shared Entry Components', () => {
       )
 
       expect(result.current.screen).toBe('guest-lobby')
-      expect(result.current.lobbyCoordinator).toEqual({ role: 'guest', target: 'match-custom-target' })
+      expect(result.current.lobbyCoordinator?.role).toBe('guest')
+      expect(result.current.lobbyCoordinator?.target).toBe('match-custom-target')
       expect(createFriendLobby).toHaveBeenCalledWith('guest', 'match-custom-target')
     })
 
     it('resolves ?match= from browser search params if initialRoomCode/initialMatchId are omitted', () => {
       window.history.replaceState(null, '', '/tictactoe?match=url-target-456')
 
-      const createFriendLobby = vi.fn((role: string, target?: string) => ({ role, target }))
-      const createStrangerLobby = vi.fn((_res) => ({ role: 'stranger' }))
+      const createFriendLobby = vi.fn((role: string, target?: string): MockLobby => ({
+        role,
+        target,
+        destroy: vi.fn(),
+      }))
+      const createStrangerLobby = vi.fn((_res): MockLobby => ({
+        role: 'stranger',
+        destroy: vi.fn(),
+      }))
 
       try {
         const { result } = renderHook(() =>
@@ -309,11 +339,40 @@ describe('Shared Entry Components', () => {
         )
 
         expect(result.current.screen).toBe('guest-lobby')
-        expect(result.current.lobbyCoordinator).toEqual({ role: 'guest', target: 'url-target-456' })
+        expect(result.current.lobbyCoordinator?.role).toBe('guest')
+        expect(result.current.lobbyCoordinator?.target).toBe('url-target-456')
         expect(createFriendLobby).toHaveBeenCalledWith('guest', 'url-target-456')
       } finally {
         window.history.replaceState(null, '', '/')
       }
+    })
+
+    it('manages typed lobby start and destroy lifecycle', async () => {
+      const startMock = vi.fn().mockResolvedValue(undefined)
+      const destroyMock = vi.fn()
+      const lobby: MockLobby = {
+        role: 'host',
+        start: startMock,
+        destroy: destroyMock,
+      }
+
+      const { result, unmount } = renderHook(() =>
+        useOnlineEntryFlow({
+          gameId: 'tictactoe',
+          createFriendLobby: () => lobby,
+          createStrangerLobby: () => lobby,
+        })
+      )
+
+      act(() => {
+        result.current.handleCreateRoom()
+      })
+
+      expect(startMock).toHaveBeenCalledTimes(1)
+      expect(destroyMock).not.toHaveBeenCalled()
+
+      unmount()
+      expect(destroyMock).toHaveBeenCalledTimes(1)
     })
   })
 })

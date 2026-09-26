@@ -173,5 +173,3 @@ export const ticTacToeDefinition: GameDefinition<TicTacToeState, TicTacToeMove, 
     return checkWin(state)
   },
 }
-
-export const ticTacToeGameDefinition = ticTacToeDefinition
