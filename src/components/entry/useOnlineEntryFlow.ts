@@ -7,6 +7,7 @@ export interface UseOnlineEntryFlowOptions<TLobby> {
   gameId: string
   initialAction?: 'create' | null
   initialRoomCode?: string | null
+  initialMatchId?: string | null
   createFriendLobby: (role: PlayerRole, targetOrRoomCode?: string) => TLobby
   createStrangerLobby: (result: StrangerMatchResult) => TLobby
   startLobby?: (lobby: TLobby) => void | Promise<void>
@@ -20,19 +21,56 @@ export function updateEntryBrowserUrl(url: string) {
   }
 }
 
+/**
+ * Extracts entry query parameters (?room=, ?match=, ?action=) from URL search string.
+ */
+export function getEntryUrlParams(customSearch?: string): {
+  action: 'create' | null
+  roomOrMatch: string | null
+} {
+  if (typeof window === 'undefined' && !customSearch) {
+    return { action: null, roomOrMatch: null }
+  }
+  try {
+    const queryString =
+      customSearch ?? (typeof window !== 'undefined' ? window.location.search : '')
+    const params = new URLSearchParams(queryString)
+    const roomOrMatch = params.get('room') || params.get('match') || null
+    const action = params.get('action') === 'create' ? 'create' : null
+    return { action, roomOrMatch }
+  } catch {
+    return { action: null, roomOrMatch: null }
+  }
+}
+
 export function useOnlineEntryFlow<TLobby>({
   gameId,
-  initialAction = null,
-  initialRoomCode = null,
+  initialAction,
+  initialRoomCode,
+  initialMatchId,
   createFriendLobby,
   createStrangerLobby,
   startLobby,
   destroyLobby,
   onExit,
 }: UseOnlineEntryFlowOptions<TLobby>) {
+  // Resolve target (room or match) and action from explicit options or URL parameters
+  const explicitTarget = initialRoomCode || initialMatchId || null
+  const explicitAction = initialAction ?? null
+
+  const resolvedTarget =
+    explicitTarget ||
+    (initialRoomCode === undefined && initialMatchId === undefined
+      ? getEntryUrlParams().roomOrMatch
+      : null)
+
+  const resolvedAction =
+    explicitAction ||
+    (initialAction === undefined ? getEntryUrlParams().action : null)
+
   const getInitialScreen = (): EntryScreen => {
-    if (initialRoomCode) return 'guest-lobby'
-    if (initialAction === 'create') return 'create-room'
+    if (resolvedTarget) return 'guest-lobby'
+    if (resolvedAction === 'create') return 'create-room'
     return 'choice'
   }
 
@@ -60,12 +98,12 @@ export function useOnlineEntryFlow<TLobby>({
     }
   }
 
-  // Initial lobby coordinator is ONLY created if initialRoomCode or initialAction is present!
+  // Initial lobby coordinator is created if initial target (room/match) or create action is present
   const [lobbyCoordinator, setLobbyCoordinator] = useState<TLobby | null>(() => {
-    if (initialRoomCode) {
-      return createFriendLobby('guest', initialRoomCode)
+    if (resolvedTarget) {
+      return createFriendLobby('guest', resolvedTarget)
     }
-    if (initialAction === 'create') {
+    if (resolvedAction === 'create') {
       return createFriendLobby('host')
     }
     return null
