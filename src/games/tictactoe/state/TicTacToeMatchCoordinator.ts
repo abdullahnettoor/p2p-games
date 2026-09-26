@@ -218,6 +218,9 @@ export class TicTacToeMatchCoordinator {
   }
 
   private notify(): void {
+    // State is updated in place, so hand out a new object on every change:
+    // React's useState skips re-rendering when it receives the same reference.
+    this.state = { ...this.state }
     this.listeners.forEach((l) => l())
   }
 
