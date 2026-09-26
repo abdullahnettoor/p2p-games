@@ -47,6 +47,36 @@ describe('tic-tac-toe engine', () => {
     expect(validateMove(afterFirst, { cellIndex: 0, playerId: GUEST }).valid).toBe(false)
   })
 
+  it('reports "Round is already over" when moving on completed state', () => {
+    const wonState = play(freshState(), 0, 3, 1, 4, 2)
+    expect(wonState.status).toBe('completed')
+    const result = validateMove(wonState, { cellIndex: 5, playerId: GUEST })
+    expect(result.valid).toBe(false)
+    expect(result.reason).toBe('Round is already over')
+  })
+
+  it('handles pass moves on turn timeout', () => {
+    const state = freshState()
+    expect(state.activePlayerId).toBe(HOST)
+
+    // Guest cannot pass on Host's turn
+    expect(validateMove(state, { type: 'pass', playerId: GUEST }).valid).toBe(false)
+
+    // Host passes (turn timer expires)
+    const passValidation = validateMove(state, { type: 'pass', playerId: HOST })
+    expect(passValidation.valid).toBe(true)
+
+    const afterPass = applyMove(state, { type: 'pass', playerId: HOST })
+    expect(afterPass.activePlayerId).toBe(GUEST)
+    expect(afterPass.board).toEqual(state.board) // Board remains unchanged
+    expect(afterPass.status).toBe('active')
+
+    // Now Guest passes
+    const afterGuestPass = applyMove(afterPass, { type: 'pass', playerId: GUEST })
+    expect(afterGuestPass.activePlayerId).toBe(HOST)
+    expect(afterGuestPass.board).toEqual(state.board)
+  })
+
   it('leaves state untouched when an invalid move is applied', () => {
     const state = freshState()
     expect(applyMove(state, { cellIndex: 0, playerId: GUEST })).toBe(state)
@@ -59,23 +89,22 @@ describe('tic-tac-toe engine', () => {
   })
 
   it('detects a win and freezes the match', () => {
-    // X: 0,1,2  O: 3,4
     const state = play(freshState(), 0, 3, 1, 4, 2)
-
     expect(state.status).toBe('completed')
     expect(state.winnerId).toBe(HOST)
     expect(state.isDraw).toBe(false)
     expect(state.winningLine).toEqual([0, 1, 2])
 
-    const afterGameOver = applyMove(state, { cellIndex: 5, playerId: GUEST })
-    expect(afterGameOver).toBe(state)
+    // further moves rejected
+    expect(applyMove(state, { cellIndex: 5, playerId: GUEST })).toBe(state)
   })
 
   it('detects a diagonal win for the guest', () => {
-    // X: 1,3,5  O: 0,4,8
-    const state = play(freshState(), 1, 0, 3, 4, 5, 8)
+    // H:0, G:4, H:1, G:2, H:8, G:6 -> line 2-4-6
+    const state = play(freshState(), 0, 4, 1, 2, 8, 6)
+    expect(state.status).toBe('completed')
     expect(state.winnerId).toBe(GUEST)
-    expect(state.winningLine).toEqual([0, 4, 8])
+    expect(state.winningLine).toEqual([2, 4, 6])
   })
 
   it('detects a draw when the board fills with no line', () => {
@@ -161,17 +190,29 @@ describe('ticTacToeDefinition (GameDefinition implementation)', () => {
     expect(outcome.winnerId).toBe(HOST)
   })
 
-  it('resets new round deterministically from host payload', () => {
+  it('resets new round deterministically from host payload with validation', () => {
     const payload = {
       roundNumber: 2,
       startingPlayerId: GUEST,
       timestamp: 123456789,
     }
-    const state = resetRoundFromHostMessage(payload, [HOST, GUEST])
+    const state = resetRoundFromHostMessage(payload, [HOST, GUEST], 2)
     expect(state.activePlayerId).toBe(GUEST)
     expect(state.board).toEqual(Array(9).fill(null))
     expect(state.marks[HOST]).toBe('X')
     expect(state.marks[GUEST]).toBe('O')
     expect(state.status).toBe('active')
+
+    // Rejects mismatched roundNumber
+    expect(() => resetRoundFromHostMessage(payload, [HOST, GUEST], 3)).toThrow(
+      'Unexpected round number'
+    )
+    // Rejects invalid startingPlayerId
+    expect(() =>
+      resetRoundFromHostMessage(
+        { roundNumber: 2, startingPlayerId: 'stranger', timestamp: 123 },
+        [HOST, GUEST]
+      )
+    ).toThrow('Invalid startingPlayerId')
   })
 })

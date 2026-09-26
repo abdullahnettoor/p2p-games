@@ -108,15 +108,20 @@ export function evaluateSeries(
 
 /**
  * Initializes a new Series state.
+ * ADR 0003: The Host explicitly selects round1StarterId; no Math.random() fallback.
  */
 export function createSeries(config: {
   bestOf?: BestOfSeriesLength
   players: [string, string]
-  round1StarterId?: string
+  round1StarterId: string
 }): SeriesState {
   const bestOf = config.bestOf ?? DEFAULT_SERIES_LENGTH
   const [p1, p2] = config.players
-  const round1StarterId = config.round1StarterId ?? (Math.random() < 0.5 ? p1 : p2)
+  const round1StarterId = config.round1StarterId
+
+  if (!config.players.includes(round1StarterId)) {
+    throw new Error(`Invalid round1StarterId: ${round1StarterId} is not in players`)
+  }
 
   return {
     bestOf,
@@ -135,17 +140,30 @@ export function createSeries(config: {
 
 /**
  * Pure state transition: records the result of the current round and advances the series.
+ * Strictly validates that winnerId matches one of the two players or is null when drawn.
  */
 export function recordRoundResult(
   state: SeriesState,
   result: {
     winnerId: string | null
     isDraw: boolean
-    winningLine?: number[] | null
   }
 ): SeriesState {
   if (state.status === 'completed') {
     return state
+  }
+
+  if (result.isDraw) {
+    if (result.winnerId !== null) {
+      throw new Error('Invalid round result: a drawn round must have winnerId: null')
+    }
+  } else {
+    if (!result.winnerId) {
+      throw new Error('Invalid round result: a non-drawn round must have a winnerId')
+    }
+    if (!state.players.includes(result.winnerId)) {
+      throw new Error(`Invalid round result: winnerId ${result.winnerId} is not in players`)
+    }
   }
 
   const roundNumber = state.rounds.length + 1
@@ -154,7 +172,6 @@ export function recordRoundResult(
     startingPlayerId: state.currentRoundStarterId,
     winnerId: result.winnerId,
     isDraw: result.isDraw,
-    winningLine: result.winningLine,
   }
 
   const nextRounds = [...state.rounds, roundRecord]
@@ -202,13 +219,17 @@ export function recordRoundResult(
 
 /**
  * Creates the payload for the host to broadcast when initiating a round.
+ * ADR 0003: Timestamp is required from the Host; no Date.now() fallback.
  */
 export function createRoundStartPayload(
   state: SeriesState,
-  timestamp: number = Date.now()
+  timestamp: number
 ): RoundStartMessagePayload {
   if (state.status === 'completed') {
     throw new Error('Cannot start a new round in a completed series')
+  }
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
+    throw new Error('Valid numeric timestamp required')
   }
 
   return {
@@ -244,49 +265,4 @@ export function validateRoundStartMessage(
   }
 
   return { valid: true }
-}
-
-/**
- * Formats series score string.
- * Example outputs:
- * - "You 1 – 0 Swift Otter · 1 draw"
- * - "Swift Otter 2 – 1 You"
- * - "You 0 – 0 Swift Otter · 3 draws"
- */
-export function formatSeriesScore({
-  scores,
-  draws,
-  playerNames,
-  localPlayerId,
-  players,
-}: {
-  scores: Record<string, number>
-  draws: number
-  playerNames: Record<string, string>
-  localPlayerId?: string
-  players: [string, string]
-}): string {
-  const [p1, p2] = players
-  const p1Score = scores[p1] ?? 0
-  const p2Score = scores[p2] ?? 0
-
-  let scoreText: string
-  if (localPlayerId === p1) {
-    const remoteName = playerNames[p2] || 'Opponent'
-    scoreText = `You ${p1Score} – ${p2Score} ${remoteName}`
-  } else if (localPlayerId === p2) {
-    const remoteName = playerNames[p1] || 'Opponent'
-    scoreText = `You ${p2Score} – ${p1Score} ${remoteName}`
-  } else {
-    const p1Name = playerNames[p1] || 'Player 1'
-    const p2Name = playerNames[p2] || 'Player 2'
-    scoreText = `${p1Name} ${p1Score} – ${p2Score} ${p2Name}`
-  }
-
-  if (draws > 0) {
-    const drawLabel = draws === 1 ? '1 draw' : `${draws} draws`
-    return `${scoreText} · ${drawLabel}`
-  }
-
-  return scoreText
 }

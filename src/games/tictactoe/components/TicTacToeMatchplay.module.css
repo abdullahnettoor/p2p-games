@@ -1,0 +1,185 @@
+.matchplayContainer {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 100dvh;
+  max-height: 844px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+  user-select: none;
+  background-color: var(--ttt-tabletop);
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 0;
+  gap: 8px;
+  z-index: 20;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--ttt-paper);
+  border: 1px solid var(--ttt-rule);
+  color: var(--ttt-ink-muted);
+  cursor: pointer;
+  box-shadow: 0 1px 2px var(--ttt-sheet-shadow-soft);
+  transition: all 150ms ease;
+}
+
+.iconButton:hover {
+  background-color: var(--ttt-cell-hover);
+  color: var(--ttt-ink);
+}
+
+.turnIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.turnText {
+  font-family: var(--ttt-font-label);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ttt-ink);
+}
+
+.boardWrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  padding: 4px 0;
+}
+
+.bottomBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 6px 0;
+  z-index: 20;
+}
+
+/* Reconnection banner */
+.reconnectBanner {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  background-color: #fef2f2;
+  border: 1px solid #f87171;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #991b1b;
+  font-family: var(--ttt-font-label);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 60;
+  animation: slide-down 200ms ease-out forwards;
+}
+
+/* Forfeit dialog */
+.forfeitModal {
+  position: absolute;
+  inset: 0;
+  background-color: var(--ttt-cell-pressed);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 70;
+  padding: 16px;
+}
+
+.forfeitCard {
+  background-color: var(--ttt-paper);
+  border: 2px solid var(--ttt-rule);
+  border-radius: 16px;
+  padding: 20px;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 12px 32px var(--ttt-sheet-shadow-strong);
+}
+
+.forfeitTitle {
+  font-family: var(--ttt-font-hand);
+  font-size: 1.375rem;
+  color: var(--ttt-ink);
+  margin: 0;
+}
+
+.forfeitText {
+  font-family: var(--ttt-font-label);
+  font-size: 0.8125rem;
+  color: var(--ttt-ink-muted);
+  margin: 0;
+}
+
+.forfeitActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.confirmForfeitBtn {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background-color: var(--ttt-guest-ink);
+  color: #ffffff;
+  font-family: var(--ttt-font-label);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cancelForfeitBtn {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--ttt-rule);
+  background: transparent;
+  color: var(--ttt-ink);
+  font-family: var(--ttt-font-label);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@keyframes slide-down {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

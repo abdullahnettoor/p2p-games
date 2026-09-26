@@ -1,35 +1,47 @@
 import { GameDefinition, ValidationResult, WinResult } from '@/core/games/types'
 import { RoundStartMessagePayload } from '@/core/series/types'
-import { TicTacToeBoard, TicTacToeMove, TicTacToeState } from './types'
+import {
+  TicTacToeBoard,
+  TicTacToeMark,
+  TicTacToeMove,
+  TicTacToeState,
+} from './types'
 
-export const WINNING_LINES: ReadonlyArray<readonly [number, number, number]> = [
+export const WINNING_LINES: readonly [number, number, number][] = [
+  // Rows
   [0, 1, 2],
   [3, 4, 5],
   [6, 7, 8],
+  // Columns
   [0, 3, 6],
   [1, 4, 7],
   [2, 5, 8],
+  // Diagonals
   [0, 4, 8],
   [2, 4, 6],
-]
+] as const
 
 export function createEmptyBoard(): TicTacToeBoard {
-  return Array<null>(9).fill(null)
+  return Array(9).fill(null)
 }
 
-/**
- * Builds the opening state. The host always plays X, the guest always plays O,
- * so both peers derive identical marks without exchanging them.
- */
-export function initState(config: {
+export function initState({
+  hostId,
+  guestId,
+  startingPlayerId,
+}: {
   hostId: string
   guestId: string
   startingPlayerId?: string
 }): TicTacToeState {
+  const marks: Record<string, TicTacToeMark> = {
+    [hostId]: 'X',
+    [guestId]: 'O',
+  }
   return {
     board: createEmptyBoard(),
-    marks: { [config.hostId]: 'X', [config.guestId]: 'O' },
-    activePlayerId: config.startingPlayerId ?? config.hostId,
+    marks,
+    activePlayerId: startingPlayerId ?? hostId,
     status: 'active',
     winnerId: null,
     isDraw: false,
@@ -43,10 +55,7 @@ export function validateMove(
   playerId?: string
 ): ValidationResult {
   if (state.status === 'completed') {
-    return { valid: false, reason: 'Match is already over' }
-  }
-  if (!Number.isInteger(move.cellIndex) || move.cellIndex < 0 || move.cellIndex > 8) {
-    return { valid: false, reason: 'Cell index out of range' }
+    return { valid: false, reason: 'Round is already over' }
   }
   if (state.marks[move.playerId] === undefined) {
     return { valid: false, reason: 'Unknown player' }
@@ -56,6 +65,16 @@ export function validateMove(
   }
   if (move.playerId !== state.activePlayerId) {
     return { valid: false, reason: 'Not your turn' }
+  }
+
+  // Handle pass move (e.g. Turn timer expiry)
+  if (move.type === 'pass') {
+    return { valid: true }
+  }
+
+  // Handle standard placement move
+  if (!Number.isInteger(move.cellIndex) || move.cellIndex < 0 || move.cellIndex > 8) {
+    return { valid: false, reason: 'Cell index out of range' }
   }
   if (state.board[move.cellIndex] !== null) {
     return { valid: false, reason: 'Cell already taken' }
@@ -89,11 +108,18 @@ export function applyMove(state: TicTacToeState, move: TicTacToeMove): TicTacToe
   const validation = validateMove(state, move)
   if (!validation.valid) return state
 
-  const board = [...state.board]
-  board[move.cellIndex] = state.marks[move.playerId]
-
   const opponentId =
     Object.keys(state.marks).find((id) => id !== move.playerId) ?? move.playerId
+
+  if (move.type === 'pass') {
+    return {
+      ...state,
+      activePlayerId: opponentId,
+    }
+  }
+
+  const board = [...state.board]
+  board[move.cellIndex] = state.marks[move.playerId]
 
   const next: TicTacToeState = {
     ...state,
@@ -115,13 +141,25 @@ export function applyMove(state: TicTacToeState, move: TicTacToeMove): TicTacToe
 
 /**
  * Deterministically resets the board for a new Round from the Host's message payload.
- * Both peers running this against the same Host payload obtain identical state.
+ * Validates message properties and ensures both peers land on identical state.
  */
 export function resetRoundFromHostMessage(
   payload: RoundStartMessagePayload,
-  players: [string, string]
+  players: [string, string],
+  expectedRoundNumber?: number
 ): TicTacToeState {
   const [hostId, guestId] = players
+  if (!players.includes(payload.startingPlayerId)) {
+    throw new Error(`Invalid startingPlayerId: ${payload.startingPlayerId}`)
+  }
+  if (expectedRoundNumber !== undefined && payload.roundNumber !== expectedRoundNumber) {
+    throw new Error(
+      `Unexpected round number: expected ${expectedRoundNumber}, got ${payload.roundNumber}`
+    )
+  }
+  if (payload.roundNumber < 1) {
+    throw new Error(`Round number must be >= 1, got ${payload.roundNumber}`)
+  }
   return initState({
     hostId,
     guestId,
@@ -144,32 +182,34 @@ export const ticTacToeDefinition: GameDefinition<TicTacToeState, TicTacToeMove, 
   minPlayers: 2,
   maxPlayers: 2,
 
-  init(config: {
-    players: [string, string]
-    setupConfigs: Record<string, null>
-    startingPlayerId?: string
-  }): TicTacToeState {
-    const [hostId, guestId] = config.players
+  init({ players, startingPlayerId }): TicTacToeState {
+    const [hostId, guestId] = players
     return initState({
       hostId,
       guestId,
-      startingPlayerId: config.startingPlayerId,
+      startingPlayerId: startingPlayerId ?? hostId,
     })
   },
 
-  validateSetup(_config: null): ValidationResult {
+  validateSetup(): ValidationResult {
+    // Tic-Tac-Toe requires no player-specific setup config
     return { valid: true }
   },
 
-  validateMove(state: TicTacToeState, move: TicTacToeMove, playerId: string): ValidationResult {
+  validateMove(state, move, playerId): ValidationResult {
     return validateMove(state, move, playerId)
   },
 
-  applyMove(state: TicTacToeState, move: TicTacToeMove): TicTacToeState {
+  applyMove(state, move): TicTacToeState {
     return applyMove(state, move)
   },
 
-  checkWin(state: TicTacToeState): WinResult {
-    return checkWin(state)
+  checkWin(state): WinResult {
+    const win = checkWin(state)
+    return {
+      isGameOver: win.isGameOver,
+      winnerId: win.winnerId,
+      isDraw: win.isDraw,
+    }
   },
 }

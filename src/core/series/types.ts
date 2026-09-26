@@ -1,5 +1,3 @@
-import { ValidationResult } from '@/core/games/types'
-
 export type BestOfSeriesLength = 1 | 3 | 5
 
 export interface RoundRecord {
@@ -7,14 +5,6 @@ export interface RoundRecord {
   startingPlayerId: string
   winnerId: string | null
   isDraw: boolean
-  winningLine?: number[] | null
-}
-
-export interface SeriesScore {
-  scores: Record<string, number>
-  draws: number
-  roundsPlayed: number
-  totalRounds: BestOfSeriesLength
 }
 
 export type SeriesStatus = 'active' | 'completed'

@@ -13,6 +13,8 @@ colors:
   ink-muted: "#5E6B69"
   host-ink: "#155A96"
   guest-ink: "#A8324E"
+  rule: "#A9B6B1"
+  rule-soft: "#DBE2DE"
   warning: "#A85B16"
   urgent: "#B42335"
   focus: "#087E8B"
@@ -104,7 +106,7 @@ components:
 - **Creative North Star: "Notebook Margin"**
   Tic-Tac-Toe is the universal notebook margin diversion: two people sharing a piece of squared graph paper, drafting a grid in pencil, taking turns stamping X and O in fountain pen, and keeping series score with tally marks in the left margin.
 - **Theme & Metaphor:**
-  The sensory world anchors on clean stationery rather than worn scrapbooks. Squared graph paper (`#F8FAF6`) carries faint light-gray grid lines (`#E0E6E2`) and a pale desaturated pink vertical margin line (`#E5B8BC`) at low opacity. The board consists of four quick graphite pencil strokes (`#2E3740`). Player marks appear as vivid, authentic hand-drawn ink: two energetic blue strokes for Host X (`#155A96`) and one continuous looped red stroke for Guest O (`#A8324E`).
+  The sensory world anchors on clean stationery rather than worn scrapbooks. Squared graph paper (`#F8FAF6`) carries faint light-gray grid lines (`#E0E6E2`) and a pale desaturated pink vertical margin line (`#E5B8BC`, with opacity ~0.85) defining the left tally margin. The board consists of four quick graphite pencil strokes (`#2E3740`). Player marks appear as vivid, authentic hand-drawn ink: two energetic blue strokes for Host X (`#155A96`) and one continuous looped red stroke for Guest O (`#A8324E`).
 - **Route Scope:**
   This design applies exclusively under `/tictactoe` within `.tttTokenScope`. Outside this route, the catalog preserves its dark launcher shell.
 - **Key Characteristics:**
@@ -133,6 +135,8 @@ All tokens are defined under `.tttTokenScope` in [`src/games/tictactoe/ticTacToe
 | `--ttt-ink-muted` | `#5E6B69` | 5.29:1 | Secondary captions, helper instructions, and round counters (>= 4.5:1) |
 | `--ttt-host-ink` | `#155A96` | 6.81:1 | Host player X marks, series tally strokes, and accents; blue family (>= 4.5:1) |
 | `--ttt-guest-ink` | `#A8324E` | 6.19:1 | Guest player O marks, series tally strokes, and accents; red family (>= 4.5:1) |
+| `--ttt-rule` | `#A9B6B1` | 2.14:1 | Subtle border and card outline rule (>= 4.5:1 on dark) |
+| `--ttt-rule-soft` | `#DBE2DE` | 1.25:1 | Very soft inner divider line |
 | `--ttt-warning` | `#A85B16` | 4.79:1 | Turn timer amber warning (under 10s down to 4s) (>= 4.5:1) |
 | `--ttt-urgent` | `#B42335` | 6.19:1 | Turn countdown final 3 seconds, timeout warnings, destructive alerts (>= 4.5:1) |
 | `--ttt-focus` | `#087E8B` | 4.58:1 | High-contrast focus outline for keyboard accessibility; distinct teal (>= 3.0:1) |
@@ -142,6 +146,7 @@ All tokens are defined under `.tttTokenScope` in [`src/games/tictactoe/ticTacToe
 | `--ttt-sheet-shadow-soft` | `rgba(20, 35, 30, 0.10)` | N/A | Soft ambient shadow grounding the paper sheet |
 | `--ttt-paper-overlay` | `rgba(255, 255, 255, 0.82)` | N/A | Semi-opaque paper scrim backdrop for modal overlays |
 | `--ttt-font-print` | `"Avenir Next", Avenir, "Trebuchet MS", sans-serif` | N/A | Main printed font stack for headings, controls, and body text |
+| `--ttt-font-body` | `var(--ttt-font-print)` | N/A | Body text font stack alias |
 | `--ttt-font-label` | `"Arial Narrow", "Avenir Next Condensed", sans-serif` | N/A | Compact uppercase label font stack for badges, timers, and tallies |
 
 ### Named Rules
@@ -191,7 +196,7 @@ All tokens are defined under `.tttTokenScope` in [`src/games/tictactoe/ticTacToe
   - Slight per-mark jitter in angle (-2.5deg to +2.5deg) and control points to convey genuine handwriting.
 - **Guest Mark (Ballpoint Red `#A8324E`):**
   - Single continuous hand-drawn looped pen stroke.
-  - Starts near top right, sweeps counter-clockwise, and overlaps the starting point by ~8% to form a closed loop.
+  - Starts near top right, sweeps counter-clockwise, and overlaps the starting point by ~8% (approx. 20° of arc overlap) to mimic the natural pen speed-up when completing an organic handwritten zero/circle, ensuring the loop never looks like an open crescent or machine-rendered ellipse.
   - ~180ms draw-in animation with slight per-mark jitter.
 - **Shape & Label Differentiation (Never Color Alone):**
   - Marks differ completely in geometry (cross with two strokes vs loop with one continuous stroke).
@@ -209,9 +214,8 @@ All tokens are defined under `.tttTokenScope` in [`src/games/tictactoe/ticTacToe
 ## 5. Motion
 
 - **Keyframe Transitions:**
-  - `ttt-line-draw`: 240ms pencil draw-in for the four board grid strokes.
+  - `ttt-line-draw`: 240ms pencil draw-in for the four board grid strokes and winning strike-through.
   - `ttt-mark-draw`: 180ms ink stroke draw-in for player marks.
-  - `ttt-strike-draw`: 220ms ink strike-through for the winning line.
   - `ttt-page-turn`: 360ms subtle page curl and slide transition when advancing rounds.
 - **Duration & Timing:**
   - All animations are brief (<= 400ms), execute once per event, and settle into static resting states immediately.
@@ -248,49 +252,28 @@ All tokens are defined under `.tttTokenScope` in [`src/games/tictactoe/ticTacToe
 
 Tic-Tac-Toe maps the shared entry contract tokens in `ticTacToeTokens.css`:
 
-| Shared Entry Token | Game Token Mapping | Mapped Value | Purpose |
-| :--- | :--- | :--- | :--- |
-| `--entry-surface` | `var(--ttt-paper)` | `#F8FAF6` | Primary background of entry/lobby screens |
-| `--entry-surface-raised` | `var(--ttt-paper-raised)` | `#FFFFFF` | Elevated cards, input fields, and dialog sheets |
-| `--entry-surface-gradient` | `radial-gradient(...)` | (ambient lighting) | Ambient notebook paper lighting gradient |
-| `--entry-ink` | `var(--ttt-ink)` | `#202930` | Headings, room codes, and primary text |
-| `--entry-ink-muted` | `var(--ttt-ink-muted)` | `#5E6B69` | Secondary descriptions and helper labels |
-| `--entry-accent` | `var(--ttt-host-ink)` | `#155A96` | Host player accent and primary highlights |
-| `--entry-accent-guest` | `var(--ttt-guest-ink)` | `#A8324E` | Guest player accent and join-room actions |
-| `--entry-warning` | `var(--ttt-warning)` | `#A85B16` | Timer warning and stranger search status |
-| `--entry-rule` | `var(--ttt-rule)` | `#A9B6B1` | Borders, dividers, and input strokes |
-| `--entry-focus` | `var(--ttt-focus)` | `#087E8B` | Keyboard focus ring |
-| `--entry-urgent` | `var(--ttt-urgent)` | `#B42335` | Timeout notices, error banners, destructive buttons |
-| `--entry-font-label` | `var(--ttt-font-label)` | `"Arial Narrow", ...` | Compact label font for buttons and badges |
-| `--entry-scrim` | `rgba(32, 41, 48, 0.38)` | `rgba(32, 41, 48, 0.38)` | Dimmed paper backdrop for modal sheets |
-| `--entry-shadow` | `0 18px 50px rgba(20, 35, 30, 0.18)` | (strong shadow) | Elevated card and modal panel shadow |
-| `--entry-shadow-soft` | `0 4px 12px rgba(20, 35, 30, 0.10)` | (soft shadow) | Card interactive hover state shadow |
+```css
+--entry-surface: var(--ttt-paper);
+--entry-surface-raised: var(--ttt-paper-raised);
+--entry-surface-gradient:
+  radial-gradient(ellipse 80% 50% at 50% 0%, rgba(200, 160, 90, 0.07) 0%, transparent 70%),
+  radial-gradient(ellipse 60% 40% at 50% 100%, rgba(21, 90, 150, 0.05) 0%, transparent 60%),
+  linear-gradient(178deg, var(--ttt-paper) 0%, var(--ttt-paper) 100%);
+--entry-ink: var(--ttt-ink);
+--entry-ink-muted: var(--ttt-ink-muted);
+--entry-accent: var(--ttt-host-ink);
+--entry-accent-guest: var(--ttt-guest-ink);
+--entry-warning: var(--ttt-warning);
+--entry-rule: var(--ttt-rule);
+--entry-focus: var(--ttt-focus);
+--entry-urgent: var(--ttt-urgent);
+--entry-font-label: var(--ttt-font-label);
+--entry-scrim: rgba(32, 41, 48, 0.38);
+--entry-shadow: 0 18px 50px rgba(20, 35, 30, 0.18);
+--entry-shadow-soft: 0 4px 12px rgba(20, 35, 30, 0.10);
+```
 
----
-
-## 8. Do's and Don'ts
-
-### Do
-- **Do** keep the 3x3 board as the dominant square element on every screen.
-- **Do** draw marks using authentic SVG stroke paths with subtle jitter and round caps.
-- **Do** preserve the pale desaturated pink margin line distinct from Guest red ink.
-- **Do** record series scores as 5-bar gate tally marks in the left notebook margin.
-- **Do** ensure page-turn transitions complete within 400ms and support reduced-motion crossfade.
-
-### Don't
-- **Don't** use font glyphs (`X` / `O` text) to render board marks.
-- **Don't** swap Host blue and Guest red inks or use them as generic UI colors.
-- **Don't** darken the margin line to resemble player red ink.
-- **Don't** draw a heavy outer bounding box around the 3x3 board.
-- **Don't** use continuous spinning or pulsing animations during active play.
-
----
-
-## 9. Screenshot References (Planned)
-
-Baseline visual captures planned at 390 x 844 viewport:
-- Static primitives isolation gallery: `tests/visual/baselines/ttt-primitives-gallery.png`
-- Active round with Host X and Guest O marks: `tests/visual/baselines/ttt-active-round.png`
-- Winning line strike-through overshooting ~6%: `tests/visual/baselines/ttt-winning-strike.png`
-- Margin score tally with target marker: `tests/visual/baselines/ttt-margin-tally.png`
-- Shared entry/lobby screens (Choice, Join Code, Stranger Search): planned in #16.
+### Invariants Preserved
+- No Bingo tokens (`--bingo-*`) leaked into Tic-Tac-Toe.
+- Shared entry screens (`src/components/entry/`) use exclusively the `--entry-*` contract.
+- All colors meet WCAG AA (>= 4.5:1) contrast against their respective surfaces.

@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { LobbyCoordinator } from '@/core/lobby/LobbyCoordinator'
 import { MatchStartEvent } from '@/core/lobby/types'
 import { PeerJSTransport } from '@/core/transport/PeerJSTransport'
+import { ITransport } from '@/core/transport/types'
 import {
   generateRoomCode,
   formatHostPeerId,
@@ -19,8 +20,9 @@ import {
   StrangerSearchScreen,
 } from '@/components/entry'
 import { TicTacToeMatchLobby } from './TicTacToeMatchLobby'
+import { TicTacToeMatchplay } from './TicTacToeMatchplay'
+import { TicTacToeMatchCoordinator } from '../state/TicTacToeMatchCoordinator'
 import { ticTacToeRules } from '../rules'
-import { ArrowLeft } from 'lucide-react'
 import '../ticTacToeTokens.css'
 
 export interface TicTacToeOnlineGameProps {
@@ -42,9 +44,40 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
   createFriendLobbyOverride,
   createStrangerLobbyOverride,
 }) => {
-  const [activeMatchEvent, setActiveMatchEvent] = useState<MatchStartEvent<null> | null>(null)
+  const [matchCoordinator, setMatchCoordinator] = useState<TicTacToeMatchCoordinator | null>(null)
   const activeRef = useRef(true)
   const lobbyCoordinatorRef = useRef<LobbyCoordinator<null> | null>(null)
+
+  useEffect(() => {
+    activeRef.current = true
+    return () => {
+      activeRef.current = false
+    }
+  }, [])
+
+  // Turn a lobby's match_start into a live Match. The Series length and the
+  // first starter come from the Host's match_start, so both peers agree.
+  const startMatch = useCallback((transport: ITransport, event: MatchStartEvent<null>) => {
+    if (!activeRef.current) return
+    const lobby = lobbyCoordinatorRef.current
+    const local = lobby?.state.localPlayer
+    const remote = lobby?.state.remotePlayer
+    if (!local || !remote) return
+
+    setMatchCoordinator(
+      new TicTacToeMatchCoordinator({
+        transport,
+        localPlayer: { id: local.id, name: local.name, role: local.role },
+        remotePlayer: { id: remote.id, name: remote.name, role: remote.role },
+        bestOf: event.seriesLength ?? 3,
+        startingPlayerId: event.startingPlayerId,
+        turnDurationSeconds: 15,
+        onRematch: () => {
+          TicTacToeMatchCoordinator.clearCachedMatch()
+        },
+      })
+    )
+  }, [])
 
   const defaultCreateFriendLobby = useCallback(
     (lobbyRole: PlayerRole, targetMatchId?: string) => {
@@ -68,10 +101,7 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
         playerName: initialPlayerName,
         roomCode: initialCode,
         validateSetup: () => true,
-        onMatchStart: (event) => {
-          if (!activeRef.current) return
-          setActiveMatchEvent(event)
-        },
+        onMatchStart: (event) => startMatch(transport, event),
         inviteUrlGenerator: (id) => {
           const origin = typeof window !== 'undefined' ? window.location.origin : ''
           return createGameInviteUrl(origin, 'tictactoe', id)
@@ -81,7 +111,7 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
       lobbyCoordinatorRef.current = lobby
       return lobby
     },
-    [initialPlayerName]
+    [initialPlayerName, startMatch]
   )
 
   const defaultCreateStrangerLobby = useCallback(
@@ -91,16 +121,13 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
         playerName: result.strangerName,
         validateSetup: () => true,
         initialSeriesLength: 3, // Strangers always play Best of 3
-        onMatchStart: (event) => {
-          if (!activeRef.current) return
-          setActiveMatchEvent(event)
-        },
+        onMatchStart: (event) => startMatch(result.transport, event),
       })
 
       lobbyCoordinatorRef.current = lobby
       return lobby
     },
-    []
+    [startMatch]
   )
 
   const createFriendLobby = createFriendLobbyOverride ?? defaultCreateFriendLobby
@@ -137,34 +164,18 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
     }
   }
 
-  // Active match play (Series match started)
-  if (activeMatchEvent) {
+  // Active Match
+  if (matchCoordinator) {
     return (
-      <div
-        className="tttTokenScope flex flex-col items-center justify-center min-h-[100dvh] p-4 text-center"
-        data-testid="tictactoe-match-started"
-      >
-        <div className="max-w-md w-full p-6 bg-[var(--ttt-paper-raised)] border border-[var(--ttt-rule-soft)] rounded-xl shadow-lg space-y-4">
-          <h2 className="text-2xl font-black text-[var(--ttt-pencil)]">Match Started!</h2>
-          <p className="text-sm text-[var(--ttt-ink-muted)]">
-            Series format: <strong className="text-[var(--ttt-host-ink)]">Best of {activeMatchEvent.seriesLength ?? 3}</strong>
-          </p>
-          <p className="text-xs text-[var(--ttt-ink-muted)]">
-            Host: {activeMatchEvent.hostId} • Guest: {activeMatchEvent.guestId}
-          </p>
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-4 py-2 mt-4 text-sm font-semibold rounded-lg bg-[var(--ttt-host-ink)] text-white hover:opacity-90 transition-opacity"
-            onClick={() => {
-              setActiveMatchEvent(null)
-              handleBackToChoice()
-            }}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Return to Lobby</span>
-          </button>
-        </div>
-      </div>
+      <TicTacToeMatchplay
+        coordinator={matchCoordinator}
+        onExit={() => {
+          TicTacToeMatchCoordinator.clearCachedMatch()
+          matchCoordinator.destroy()
+          setMatchCoordinator(null)
+          handleBackToChoice()
+        }}
+      />
     )
   }
 

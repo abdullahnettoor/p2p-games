@@ -91,7 +91,7 @@
 
 .tallySvg {
   overflow: visible;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.06));
+  filter: drop-shadow(0 1px 1px var(--ttt-sheet-shadow-soft));
 }
 
 .tallyStroke {
