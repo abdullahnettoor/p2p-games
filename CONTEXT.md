@@ -17,8 +17,16 @@ The full-screen surface a Game owns once it is opened from the Catalog. Platform
 _Avoid_: Hub, Wrapper, Container, Game page
 
 **Match**:
-A single live session of a Game played between two Players with an explicit lifecycle (waiting, active, completed).
+A single live session of a Game played between two Players with an explicit lifecycle (waiting, active, completed). A Match holds one or more Rounds; it completes when its Series is decided or a Player forfeits. A rematch starts a new Match.
 _Avoid_: Room, Session, Lobby instance
+
+**Round**:
+One board played to a win or a draw inside a Match.
+_Avoid_: Game (reserved for the pluggable definition), Set, Hand
+
+**Series**:
+The fixed number of Rounds that decides a Match: best of 1, 3 or 5. A drawn Round still counts toward the length but scores for nobody. The Player with more Round wins takes the Match, it ends early once the result can't change, and a level score after the last Round is a drawn Match.
+_Avoid_: Tournament, Set, Bout
 
 **Player**:
 A human participant in a Match, identified locally as Host or Guest.
