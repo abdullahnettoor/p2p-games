@@ -374,5 +374,37 @@ describe('Shared Entry Components', () => {
       unmount()
       expect(destroyMock).toHaveBeenCalledTimes(1)
     })
+
+    it('creates and starts a fresh lobby when rendered under React.StrictMode', async () => {
+      const createFriendLobby = vi.fn((role: string, target?: string): MockLobby => {
+        return {
+          role,
+          target,
+          start: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn(),
+        }
+      })
+      const createStrangerLobby = vi.fn((_res): MockLobby => ({
+        role: 'stranger',
+        destroy: vi.fn(),
+      }))
+
+      const { result } = renderHook(
+        () =>
+          useOnlineEntryFlow({
+            gameId: 'tictactoe',
+            initialRoomCode: 'STRICT1',
+            createFriendLobby,
+            createStrangerLobby,
+          }),
+        { wrapper: ({ children }) => <React.StrictMode>{children}</React.StrictMode> }
+      )
+
+      // In StrictMode, initial effect runs -> cleans up -> runs again
+      expect(result.current.screen).toBe('guest-lobby')
+      expect(result.current.lobbyCoordinator).not.toBeNull()
+      expect(result.current.lobbyCoordinator?.start).toHaveBeenCalled()
+      expect(result.current.lobbyCoordinator?.destroy).not.toHaveBeenCalled()
+    })
   })
 })

@@ -67,6 +67,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
         role: this.transport.role,
         isReady: false,
         connected: true,
+        setupConfig: undefined,
       },
       remotePlayer: null,
       inviteUrl: null,
@@ -210,17 +211,30 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
   }
 
   public setSeriesLength(length: BestOfSeriesLength): void {
+    if (this.state.localPlayer.role !== 'host') {
+      throw new Error('Only the host can set the series length')
+    }
     if (!isValidSeriesLength(length)) {
       throw new Error(`Invalid series length: ${length}`)
     }
     if (this.seriesLength === length) return
 
     this.seriesLength = length
+    this.unreadyBothPlayers(length)
 
-    // Changing series length un-readies both players
+    if (this.transport.status === 'connected') {
+      this.transport.send({
+        type: 'series_length',
+        payload: { seriesLength: length },
+      })
+      this.sendReadyMessage(false, this.state.localPlayer.setupConfig)
+    }
+  }
+
+  private unreadyBothPlayers(newLength: BestOfSeriesLength): void {
     this.state = {
       ...this.state,
-      seriesLength: length,
+      seriesLength: newLength,
       localPlayer: {
         ...this.state.localPlayer,
         isReady: false,
@@ -233,14 +247,6 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
         : null,
     }
     this.notify()
-
-    if (this.transport.status === 'connected') {
-      this.transport.send({
-        type: 'series_length',
-        payload: { seriesLength: length },
-      })
-      this.sendReadyMessage(false, this.state.localPlayer.setupConfig)
-    }
   }
 
   public updatePlayerName(name: string): void {
@@ -291,8 +297,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     if (this.validateSetup) {
       return Boolean(this.validateSetup(this.state.localPlayer.setupConfig as TSetupConfig))
     }
-    if (this.state.localPlayer.setupConfig === undefined) return false
-    return true
+    return this.state.localPlayer.setupConfig !== undefined
   }
 
   public setReady(isReady: boolean): void {
@@ -334,7 +339,7 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     this.notify()
   }
 
-  private sendReadyMessage(isReady: boolean, setupConfig?: TSetupConfig): void {
+  private sendReadyMessage(isReady: boolean, setupConfig?: TSetupConfig | null): void {
     if (this.transport.status === 'connected') {
       this.transport.send({
         type: 'ready',
@@ -351,11 +356,14 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
     const { localPlayer, remotePlayer } = this.state
     if (localPlayer.isReady && remotePlayer?.isReady) {
       // Validate both local and remote board configurations before launching
+      const isLocalSetupValid =
+        !this.validateSetup ||
+        Boolean(this.validateSetup(localPlayer.setupConfig as TSetupConfig))
       const isRemoteSetupValid =
         !this.validateSetup ||
         Boolean(this.validateSetup(remotePlayer.setupConfig as TSetupConfig))
 
-      if (!isRemoteSetupValid) {
+      if (!isLocalSetupValid || !isRemoteSetupValid) {
         return
       }
 
@@ -415,25 +423,15 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
         break
       }
       case 'series_length': {
+        // Only the guest accepts series_length changes from the host
+        if (this.state.localPlayer.role !== 'guest') {
+          console.warn('[LobbyCoordinator] Ignoring series_length message on host')
+          break
+        }
         const length = message.payload.seriesLength
         if (isValidSeriesLength(length)) {
           this.seriesLength = length
-          // Changing series length un-readies both players
-          this.state = {
-            ...this.state,
-            seriesLength: length,
-            localPlayer: {
-              ...this.state.localPlayer,
-              isReady: false,
-            },
-            remotePlayer: this.state.remotePlayer
-              ? {
-                  ...this.state.remotePlayer,
-                  isReady: false,
-                }
-              : null,
-          }
-          this.notify()
+          this.unreadyBothPlayers(length)
           if (this.transport.status === 'connected') {
             this.sendReadyMessage(false, this.state.localPlayer.setupConfig)
           }
@@ -461,23 +459,22 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
         break
       }
       case 'match_start': {
+        // Only the guest accepts match_start messages from the host
+        if (this.state.localPlayer.role !== 'guest') {
+          console.warn('[LobbyCoordinator] Ignoring match_start message on host')
+          break
+        }
         const payload = message.payload
         const { localPlayer, remotePlayer } = this.state
         if (remotePlayer) {
-          const isLocalHost = localPlayer.role === 'host'
-          const hostId = isLocalHost ? localPlayer.id : remotePlayer.id
-          const guestId = isLocalHost ? remotePlayer.id : localPlayer.id
+          const hostId = remotePlayer.id
+          const guestId = localPlayer.id
 
-          const hostSetup = (isLocalHost
-            ? localPlayer.setupConfig
-            : payload.setupConfigs?.[hostId] ?? remotePlayer.setupConfig) as TSetupConfig
+          const hostSetup = (payload.setupConfigs?.[hostId] ?? remotePlayer.setupConfig) as TSetupConfig
+          const guestSetup = localPlayer.setupConfig as TSetupConfig
 
-          const guestSetup = (!isLocalHost
-            ? localPlayer.setupConfig
-            : payload.setupConfigs?.[guestId] ?? remotePlayer.setupConfig) as TSetupConfig
-
-          const receivedSeriesLength = payload.seriesLength ?? this.seriesLength
-          if (isValidSeriesLength(receivedSeriesLength)) {
+          const receivedSeriesLength = payload.seriesLength
+          if (receivedSeriesLength && isValidSeriesLength(receivedSeriesLength)) {
             this.seriesLength = receivedSeriesLength
           }
 
@@ -565,5 +562,5 @@ export class LobbyCoordinator<TSetupConfig = unknown> {
 
 // Retain LobbySession as an alias for backwards compatibility
 export const LobbySession = LobbyCoordinator
-export type LobbySession<T> = LobbyCoordinator<T>
-export type LobbySessionOptions<T> = LobbyCoordinatorOptions<T>
+export type LobbySession<T = unknown> = LobbyCoordinator<T>
+export type LobbySessionOptions<T = unknown> = LobbyCoordinatorOptions<T>

@@ -67,7 +67,7 @@ describe('TicTacToeSeriesPicker', () => {
 
 describe('TicTacToeMatchLobby', () => {
   it('initializes local player as ready once named and renders player marks', async () => {
-    const [hostTransport] = createLoopbackTransportPair()
+    const [hostTransport, guestTransport] = createLoopbackTransportPair()
     const hostSession = new LobbyCoordinator<null>({
       transport: hostTransport,
       playerName: 'Charlie',
@@ -199,6 +199,61 @@ describe('TicTacToeOnlineGame', () => {
 
     expect(await screen.findByTestId('room-code')).toHaveTextContent('MOCK12')
     expect(screen.getByTestId('local-player-name')).toHaveTextContent('LocalPlayer (You)')
+  })
+
+  it('mounts directly into host lobby when ?action=create is in URL', async () => {
+    window.history.replaceState(null, '', '/tictactoe?action=create')
+    const [hostTransport, guestTransport] = createLoopbackTransportPair()
+
+    try {
+      render(
+        <TicTacToeOnlineGame
+          createFriendLobbyOverride={(role) => {
+            const transport = role === 'host' ? hostTransport : guestTransport
+            return new LobbyCoordinator<null>({
+              transport,
+              playerName: 'HostCreated',
+              roomCode: 'HOST01',
+              validateSetup: () => true,
+            })
+          }}
+        />
+      )
+
+      expect(await screen.findByTestId('room-code')).toHaveTextContent('HOST01')
+      expect(screen.getByTestId('local-player-name')).toHaveTextContent('HostCreated (You)')
+    } finally {
+      window.history.replaceState(null, '', '/')
+    }
+  })
+
+  it('mounts directly into guest lobby when ?room=CODE is in URL', async () => {
+    window.history.replaceState(null, '', '/tictactoe?room=ROOM99')
+    const [hostTransport, guestTransport] = createLoopbackTransportPair()
+    let passedTarget: string | undefined
+
+    try {
+      render(
+        <TicTacToeOnlineGame
+          createFriendLobbyOverride={(role, target) => {
+            passedTarget = target
+            const transport = role === 'host' ? hostTransport : guestTransport
+            return new LobbyCoordinator<null>({
+              transport,
+              playerName: 'GuestJoined',
+              roomCode: target,
+              validateSetup: () => true,
+            })
+          }}
+        />
+      )
+
+      expect(await screen.findByTestId('guest-series-length')).toHaveTextContent('Best of 3')
+      expect(screen.getByTestId('local-player-name')).toHaveTextContent('GuestJoined (You)')
+      expect(passedTarget).toBe('ROOM99')
+    } finally {
+      window.history.replaceState(null, '', '/')
+    }
   })
 })
 

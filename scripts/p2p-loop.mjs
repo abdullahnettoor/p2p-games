@@ -147,7 +147,9 @@ async function run() {
   } catch (err) {
     log(`\nFAIL — ${err.message.split('\n')[0]}`)
     if (hostPage) {
-      log(`    host status: ${await readText(hostPage, 'poc-status').catch(() => 'n/a')}`)}
+      log(`    host status: ${await readText(hostPage, 'poc-status').catch(() => 'n/a')}`)
+      await dumpPocLog(hostPage, 'host').catch(() => {})
+    }
     if (guestPage) {
       log(`    guest status: ${await readText(guestPage, 'poc-status').catch(() => 'n/a')}`)
       await dumpPocLog(guestPage, 'guest').catch(() => {})
