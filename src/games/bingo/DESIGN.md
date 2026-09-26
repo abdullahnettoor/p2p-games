@@ -317,14 +317,16 @@ All tokens are scoped under `.bingoTokenScope` in [`src/games/bingo/bingoTokens.
 
 ---
 
-## 9. Screenshot References (Planned)
+## 9. Screenshot References
 
-Baseline visual captures planned for recording at 390 × 844 mobile viewport:
-- **Entry & Lobby Screens (Planned in #18):**
-  - Choice Screen: `/bingo` entry presenting Create Room, Join with Code, and Play with Stranger.
-  - Host Lobby: Waiting for peer, room code card, copy link / QR buttons, board setup.
-  - Guest Join Screen: Room code input, numeric keyboard focus, validation error state.
-  - Stranger Search: Searching pulse with elapsed timer, 60s timeout state, connection error state.
+Baseline visual captures recorded at 390 × 844 mobile viewport with mocked transport (`npm run test:visual`):
+- **Entry & Lobby Screens (Recorded in #18):**
+  - Choice Screen: `tests/visual/baselines/bingo-choice.png` (`/bingo` entry presenting Create Room, Join with Code, and Play with Stranger).
+  - Join Code Screen (Empty): `tests/visual/baselines/bingo-join-code-empty.png` (Room code input, placeholder, disabled submit).
+  - Join Code Screen (Error): `tests/visual/baselines/bingo-join-code-error.png` (Validation error state for invalid Crockford base32 code).
+  - Stranger Search: `tests/visual/baselines/bingo-stranger-search.png` (Searching pulse with elapsed timer at 0:00).
+  - Host Match Lobby: `tests/visual/baselines/bingo-match-lobby.png` (Waiting for peer, room code card, copy link / QR buttons, board setup 5x5 grid).
+  - Tolerance: Pixel diff $\le 0.1\%$ (`maxDiffPixelRatio: 0.001`) with pixelmatch anti-aliasing threshold `0.2`.
 - **Matchplay & Results Screens (Planned):**
   - Matchplay: Active Match board, caller cross/loop marks, turn countdown strip, call slip overlay.
   - Match Result: Game over win/loss banner, final line strike-throughs, rematch invitation actions.
