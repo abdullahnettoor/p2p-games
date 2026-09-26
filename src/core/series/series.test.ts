@@ -6,11 +6,11 @@ import {
   recordRoundResult,
   createRoundStartPayload,
   validateRoundStartMessage,
-  formatSeriesScore,
   DEFAULT_SERIES_LENGTH,
   isValidSeriesLength,
 } from './series'
-import { resetRoundFromHostMessage } from '@/games/tictactoe/engine'
+import { formatSeriesScore } from '@/games/tictactoe/seriesScore'
+import { initState } from '@/games/tictactoe/engine'
 
 const HOST = 'player-host'
 const GUEST = 'player-guest'
@@ -28,7 +28,7 @@ describe('Series logic', () => {
       expect(isValidSeriesLength('3')).toBe(false)
     })
 
-    it('creates a series with default length of Best of 3', () => {
+    it('creates a series with default length of Best of 3 and required round1StarterId', () => {
       const series = createSeries({ players: PLAYERS, round1StarterId: HOST })
       expect(series.bestOf).toBe(DEFAULT_SERIES_LENGTH)
       expect(series.bestOf).toBe(3)
@@ -40,6 +40,12 @@ describe('Series logic', () => {
       expect(series.status).toBe('active')
       expect(series.winnerId).toBeNull()
       expect(series.isDraw).toBe(false)
+    })
+
+    it('rejects round1StarterId that is not in players', () => {
+      expect(() =>
+        createSeries({ players: PLAYERS, round1StarterId: 'unknown-player' })
+      ).toThrow('Invalid round1StarterId')
     })
   })
 
@@ -67,6 +73,29 @@ describe('Series logic', () => {
       series = recordRoundResult(series, { winnerId: HOST, isDraw: false })
       expect(series.currentRoundNumber).toBe(2)
       expect(series.currentRoundStarterId).toBe(GUEST)
+    })
+  })
+
+  describe('round data validation', () => {
+    it('rejects a draw with a non-null winnerId', () => {
+      const series = createSeries({ bestOf: 3, players: PLAYERS, round1StarterId: HOST })
+      expect(() =>
+        recordRoundResult(series, { winnerId: HOST, isDraw: true })
+      ).toThrow('Invalid round result: a drawn round must have winnerId: null')
+    })
+
+    it('rejects a non-draw with a null winnerId', () => {
+      const series = createSeries({ bestOf: 3, players: PLAYERS, round1StarterId: HOST })
+      expect(() =>
+        recordRoundResult(series, { winnerId: null, isDraw: false })
+      ).toThrow('Invalid round result: a non-drawn round must have a winnerId')
+    })
+
+    it('rejects a winnerId that is not in players', () => {
+      const series = createSeries({ bestOf: 3, players: PLAYERS, round1StarterId: HOST })
+      expect(() =>
+        recordRoundResult(series, { winnerId: 'impostor', isDraw: false })
+      ).toThrow('Invalid round result: winnerId impostor is not in players')
     })
   })
 
@@ -294,8 +323,10 @@ describe('Series logic', () => {
       expect(validateRoundStartMessage(series, hostPayload).valid).toBe(true)
 
       // Host and Guest independently reset their Tic-Tac-Toe round from hostPayload
-      const hostRoundState = resetRoundFromHostMessage(hostPayload, PLAYERS)
-      const guestRoundState = resetRoundFromHostMessage(hostPayload, PLAYERS)
+      const reset = () =>
+        initState({ hostId: HOST, guestId: GUEST, startingPlayerId: hostPayload.startingPlayerId })
+      const hostRoundState = reset()
+      const guestRoundState = reset()
 
       // Deterministic identical state
       expect(hostRoundState).toEqual(guestRoundState)
@@ -334,7 +365,7 @@ describe('Series logic', () => {
       series = recordRoundResult(series, { winnerId: HOST, isDraw: false })
       expect(series.status).toBe('completed')
 
-      expect(() => createRoundStartPayload(series)).toThrow('Cannot start a new round')
+      expect(() => createRoundStartPayload(series, Date.now())).toThrow('Cannot start a new round')
 
       const validation = validateRoundStartMessage(series, {
         roundNumber: 2,

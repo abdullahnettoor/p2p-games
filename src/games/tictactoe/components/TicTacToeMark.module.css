@@ -11,15 +11,26 @@
   width: 76%;
   height: 76%;
   overflow: visible;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.08));
+  filter: drop-shadow(0 1px 1px var(--ttt-sheet-shadow-soft));
 }
 
-.hostMarkPath {
-  stroke: var(--ttt-host-ink);
+.markPath {
   stroke-width: 8;
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
+}
+
+.hostInk {
+  stroke: var(--ttt-host-ink);
+}
+
+.guestInk {
+  stroke: var(--ttt-guest-ink);
+}
+
+.hostMarkPath {
+  stroke: var(--ttt-host-ink);
   stroke-dasharray: 120;
   stroke-dashoffset: 0;
   animation: ttt-mark-draw 180ms ease-out forwards;
@@ -27,10 +38,6 @@
 
 .guestMarkPath {
   stroke: var(--ttt-guest-ink);
-  stroke-width: 8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  fill: none;
   stroke-dasharray: 260;
   stroke-dashoffset: 0;
   animation: ttt-mark-draw 180ms ease-out forwards;

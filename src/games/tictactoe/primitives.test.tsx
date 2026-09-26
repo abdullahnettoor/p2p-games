@@ -46,10 +46,10 @@ describe('Tic-Tac-Toe Design Layer: Static Visual Primitives', () => {
       // Ensure no font glyphs (<text> elements) are present in the SVG
       expect(container.querySelectorAll('text').length).toBe(0)
 
-      // Verify stroke paths have round caps and fill: none
+      // Stroke styling (round caps, no fill, Host ink) comes from the CSS module
       paths.forEach((p) => {
-        expect(p.style.strokeLinecap).toBe('round')
-        expect(p.style.fill).toBe('none')
+        expect(p.getAttribute('class')).toMatch(/markPath/)
+        expect(p.getAttribute('class')).toMatch(/hostInk/)
       })
     })
 
@@ -68,8 +68,8 @@ describe('Tic-Tac-Toe Design Layer: Static Visual Primitives', () => {
       expect(container.querySelectorAll('text').length).toBe(0)
 
       const loopPath = paths[0]
-      expect(loopPath.style.strokeLinecap).toBe('round')
-      expect(loopPath.style.fill).toBe('none')
+      expect(loopPath.getAttribute('class')).toMatch(/markPath/)
+      expect(loopPath.getAttribute('class')).toMatch(/guestInk/)
       expect(loopPath.getAttribute('d')).toContain('C')
     })
 

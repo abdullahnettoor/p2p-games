@@ -21,6 +21,24 @@ export { TicTacToePrimitivesShowcase } from './TicTacToePrimitivesShowcase'
 export { TicTacToeSeriesPicker } from './TicTacToeSeriesPicker'
 export type { TicTacToeSeriesPickerProps } from './TicTacToeSeriesPicker'
 
+export { TicTacToeTurnTimer } from './TicTacToeTurnTimer'
+export type { TicTacToeTurnTimerProps } from './TicTacToeTurnTimer'
+
+export { TicTacToeReactionBar, TICTACTOE_REACTION_EMOJIS } from './TicTacToeReactionBar'
+export type { TicTacToeReactionBarProps, TicTacToeReactionEmoji } from './TicTacToeReactionBar'
+
+export { TicTacToeReactionOverlay } from './TicTacToeReactionOverlay'
+export type { TicTacToeReactionOverlayProps } from './TicTacToeReactionOverlay'
+
+export { TicTacToeBetweenRoundsOverlay } from './TicTacToeBetweenRoundsOverlay'
+export type { TicTacToeBetweenRoundsOverlayProps } from './TicTacToeBetweenRoundsOverlay'
+
+export { TicTacToeResultScreen } from './TicTacToeResultScreen'
+export type { TicTacToeResultScreenProps } from './TicTacToeResultScreen'
+
+export { TicTacToeMatchplay } from './TicTacToeMatchplay'
+export type { TicTacToeMatchplayProps } from './TicTacToeMatchplay'
+
 export { TicTacToeMatchLobby } from './TicTacToeMatchLobby'
 export type { TicTacToeMatchLobbyProps } from './TicTacToeMatchLobby'
 

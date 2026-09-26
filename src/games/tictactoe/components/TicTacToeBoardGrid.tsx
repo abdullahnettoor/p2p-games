@@ -11,6 +11,7 @@ export interface TicTacToeBoardGridProps {
   board: TicTacToeBoard
   winningLine?: number[] | null
   winnerInk?: 'host' | 'guest'
+  roundNumber?: number
   onCellClick?: (cellIndex: number) => void
   disabled?: boolean
   interactiveCellIndices?: number[]
@@ -23,13 +24,15 @@ export interface TicTacToeBoardGridProps {
  * - Four hand-drawn graphite pencil strokes (--ttt-pencil)
  * - Animated draw-in (~240ms) at the start of each round
  * - Accessible 44x44px touch cells
- * - Hand-drawn SVG marks (Host blue X, Guest red O) with jitter
+ * - Hand-drawn SVG marks (Host blue X, Guest red O) with deterministic jitter
+ * - Deterministic mark jitter seeded from roundNumber * 10 + cellIndex
  * - Winning line strike-through overshooting ~6%
  */
 export const TicTacToeBoardGrid: React.FC<TicTacToeBoardGridProps> = ({
   board,
   winningLine = null,
   winnerInk = 'host',
+  roundNumber = 1,
   onCellClick,
   disabled = false,
   interactiveCellIndices,
@@ -43,40 +46,40 @@ export const TicTacToeBoardGrid: React.FC<TicTacToeBoardGridProps> = ({
       role="grid"
       aria-label="Tic-Tac-Toe Board"
     >
-      {/* Hand-drawn pencil grid strokes */}
+      {/* 4 hand-drawn graphite pencil strokes forming the 3x3 grid */}
       <svg
         viewBox="0 0 300 300"
         className={styles.pencilGridSvg}
         aria-hidden="true"
         focusable="false"
-        data-testid="ttt-pencil-grid-svg"
       >
-        <g data-testid="ttt-pencil-strokes">
-          {/* Vertical stroke 1 (between col 0 and 1) */}
-          <path
-            d="M 101 12 C 98 85, 103 210, 99 288"
-            className={animatedStrokes ? styles.pencilStroke : undefined}
-            data-testid="ttt-pencil-v1"
-          />
-          {/* Vertical stroke 2 (between col 1 and 2) */}
-          <path
-            d="M 199 14 C 202 90, 197 205, 201 286"
-            className={animatedStrokes ? styles.pencilStroke : undefined}
-            data-testid="ttt-pencil-v2"
-          />
-          {/* Horizontal stroke 1 (between row 0 and 1) */}
-          <path
-            d="M 14 99 C 90 102, 210 97, 286 101"
-            className={animatedStrokes ? styles.pencilStroke : undefined}
-            data-testid="ttt-pencil-h1"
-          />
-          {/* Horizontal stroke 2 (between row 1 and 2) */}
-          <path
-            d="M 12 201 C 92 198, 206 203, 288 199"
-            className={animatedStrokes ? styles.pencilStroke : undefined}
-            data-testid="ttt-pencil-h2"
-          />
-        </g>
+        {/* Vertical line 1 (x ~ 100) */}
+        <path
+          d="M 100 8 C 99 90, 101 210, 99.5 292"
+          className={`${styles.pencilLine} ${animatedStrokes ? styles.pencilStroke : ''}`}
+          data-testid="ttt-pencil-v1"
+        />
+        {/* Vertical line 2 (x ~ 200) */}
+        <path
+          d="M 200 6 C 201 100, 199 200, 200.5 294"
+          className={`${styles.pencilLine} ${animatedStrokes ? styles.pencilStroke : ''}`}
+          style={animatedStrokes ? { animationDelay: '30ms' } : undefined}
+          data-testid="ttt-pencil-v2"
+        />
+        {/* Horizontal line 1 (y ~ 100) */}
+        <path
+          d="M 8 100 C 95 99, 205 101, 292 99.5"
+          className={`${styles.pencilLine} ${animatedStrokes ? styles.pencilStroke : ''}`}
+          style={animatedStrokes ? { animationDelay: '60ms' } : undefined}
+          data-testid="ttt-pencil-h1"
+        />
+        {/* Horizontal line 2 (y ~ 200) */}
+        <path
+          d="M 6 200 C 100 201, 200 199, 294 200.5"
+          className={`${styles.pencilLine} ${animatedStrokes ? styles.pencilStroke : ''}`}
+          style={animatedStrokes ? { animationDelay: '90ms' } : undefined}
+          data-testid="ttt-pencil-h2"
+        />
       </svg>
 
       {/* 3x3 interactive board cells */}
@@ -93,6 +96,8 @@ export const TicTacToeBoardGrid: React.FC<TicTacToeBoardGridProps> = ({
             ? `Row ${row} Column ${col}, marked with ${cellValue}`
             : `Row ${row} Column ${col}, empty`
 
+          const markSeed = roundNumber * 10 + idx
+
           return (
             <button
               key={idx}
@@ -107,7 +112,7 @@ export const TicTacToeBoardGrid: React.FC<TicTacToeBoardGridProps> = ({
               {cellValue && (
                 <TicTacToeMark
                   mark={cellValue as MarkType}
-                  seed={idx}
+                  seed={markSeed}
                   animated={animatedStrokes}
                   size="75%"
                 />

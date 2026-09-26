@@ -13,6 +13,8 @@ export interface MoveMessagePayload<TMove = unknown> {
   move: TMove
   playerId: string
   timestamp?: number
+  /** Set when the Host passes a timed-out Guest turn on the Guest's behalf. */
+  forcedTimeout?: boolean
 }
 
 export interface ReactionMessagePayload {
@@ -48,6 +50,8 @@ export interface SeriesLengthMessagePayload {
 export interface SyncMessagePayload {
   state: unknown
   timestamp: number
+  /** Guest asks the Host to send its state (after reconnecting). */
+  request?: boolean
 }
 
 export type TransportMessage =
