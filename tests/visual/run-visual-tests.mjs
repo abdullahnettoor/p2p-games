@@ -203,7 +203,7 @@ async function run() {
           await page.goto(`${BASE_URL}/bingo`, { waitUntil: 'networkidle' })
           await page.click('button[data-variant="create"]')
           await page.getByText('Invite ready for your friend').waitFor()
-          await page.locator('strong[class*="roomCodeValue"]').waitFor()
+          await page.locator('strong[class*=\"roomCodeValue\"]').waitFor()
         },
       },
     ]
@@ -223,10 +223,16 @@ async function run() {
 
       const baselinePath = path.join(BASELINE_DIR, `${screen.id}.png`)
 
-      if (updateMode || !fs.existsSync(baselinePath)) {
+      if (updateMode) {
         fs.writeFileSync(baselinePath, actualBuffer)
         console.log(`✓ Baseline saved to ${path.relative(process.cwd(), baselinePath)}`)
         passedCount++
+        continue
+      }
+
+      if (!fs.existsSync(baselinePath)) {
+        console.log(`✗ FAILED: Baseline image missing at ${path.relative(process.cwd(), baselinePath)}. Run npm run test:visual:update to generate baselines.`)
+        failedCount++
         continue
       }
 

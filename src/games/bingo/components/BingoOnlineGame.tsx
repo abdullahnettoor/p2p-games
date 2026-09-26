@@ -33,6 +33,7 @@ export type BingoScreen =
 export interface BingoOnlineGameProps {
   initialAction?: 'create' | null
   initialRoomCode?: string | null
+  initialMatchId?: string | null
   initialPlayerName?: string
   onExit: () => void
 }
@@ -40,6 +41,7 @@ export interface BingoOnlineGameProps {
 export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
   initialAction = null,
   initialRoomCode = null,
+  initialMatchId = null,
   initialPlayerName,
   onExit,
 }) => {
@@ -159,6 +161,7 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     gameId: 'bingo',
     initialAction,
     initialRoomCode,
+    initialMatchId,
     createFriendLobby,
     createStrangerLobby,
     onExit,

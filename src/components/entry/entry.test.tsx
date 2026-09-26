@@ -8,6 +8,7 @@ import {
   EntryRulesModal,
   EntryHeader,
   useOnlineEntryFlow,
+  getEntryUrlParams,
   EntryRulesConfig,
 } from './index'
 
@@ -197,6 +198,31 @@ describe('Shared Entry Components', () => {
     })
   })
 
+  describe('getEntryUrlParams', () => {
+    it('extracts room or match and action from query string', () => {
+      expect(getEntryUrlParams('?room=XYZ789')).toEqual({
+        action: null,
+        roomOrMatch: 'XYZ789',
+      })
+      expect(getEntryUrlParams('?match=peer-room-123')).toEqual({
+        action: null,
+        roomOrMatch: 'peer-room-123',
+      })
+      expect(getEntryUrlParams('?action=create')).toEqual({
+        action: 'create',
+        roomOrMatch: null,
+      })
+      expect(getEntryUrlParams('?room=ABC&action=create')).toEqual({
+        action: 'create',
+        roomOrMatch: 'ABC',
+      })
+      expect(getEntryUrlParams('')).toEqual({
+        action: null,
+        roomOrMatch: null,
+      })
+    })
+  })
+
   describe('useOnlineEntryFlow', () => {
     it('delays lobby creation until an action is selected', () => {
       const createFriendLobby = vi.fn((role: string) => ({ role, destroyed: false }))
@@ -247,6 +273,47 @@ describe('Shared Entry Components', () => {
       expect(result.current.screen).toBe('guest-lobby')
       expect(result.current.lobbyCoordinator).toEqual({ role: 'guest', code: 'XYZ789' })
       expect(createFriendLobby).toHaveBeenCalledWith('guest', 'XYZ789')
+    })
+
+    it('creates guest lobby immediately when initialMatchId is passed', () => {
+      const createFriendLobby = vi.fn((role: string, target?: string) => ({ role, target }))
+      const createStrangerLobby = vi.fn((_res) => ({ role: 'stranger' }))
+
+      const { result } = renderHook(() =>
+        useOnlineEntryFlow({
+          gameId: 'tictactoe',
+          initialMatchId: 'match-custom-target',
+          createFriendLobby,
+          createStrangerLobby,
+        })
+      )
+
+      expect(result.current.screen).toBe('guest-lobby')
+      expect(result.current.lobbyCoordinator).toEqual({ role: 'guest', target: 'match-custom-target' })
+      expect(createFriendLobby).toHaveBeenCalledWith('guest', 'match-custom-target')
+    })
+
+    it('resolves ?match= from browser search params if initialRoomCode/initialMatchId are omitted', () => {
+      window.history.replaceState(null, '', '/tictactoe?match=url-target-456')
+
+      const createFriendLobby = vi.fn((role: string, target?: string) => ({ role, target }))
+      const createStrangerLobby = vi.fn((_res) => ({ role: 'stranger' }))
+
+      try {
+        const { result } = renderHook(() =>
+          useOnlineEntryFlow({
+            gameId: 'tictactoe',
+            createFriendLobby,
+            createStrangerLobby,
+          })
+        )
+
+        expect(result.current.screen).toBe('guest-lobby')
+        expect(result.current.lobbyCoordinator).toEqual({ role: 'guest', target: 'url-target-456' })
+        expect(createFriendLobby).toHaveBeenCalledWith('guest', 'url-target-456')
+      } finally {
+        window.history.replaceState(null, '', '/')
+      }
     })
   })
 })

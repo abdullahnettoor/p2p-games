@@ -4,6 +4,7 @@
   Approved tokens:
     --entry-surface
     --entry-surface-raised
+    --entry-surface-gradient
     --entry-ink
     --entry-ink-muted
     --entry-accent
@@ -13,6 +14,9 @@
     --entry-focus
     --entry-urgent
     --entry-font-label
+    --entry-scrim
+    --entry-shadow
+    --entry-shadow-soft
 */
 
 .entrySurface {
@@ -21,10 +25,7 @@
   min-height: 100dvh;
   justify-content: center;
   padding: 0.5rem 1rem 1.5rem;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(200, 160, 90, 0.08) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(26, 75, 122, 0.06) 0%, transparent 60%),
-    linear-gradient(178deg, var(--entry-surface) 0%, var(--entry-surface) 100%);
+  background: var(--entry-surface-gradient, var(--entry-surface));
   color: var(--entry-ink);
   font-family: inherit;
 }
@@ -87,6 +88,7 @@
 }
 
 /* Rules Sheet / Modal */
+.rulesOverlay,
 .rulesSheet {
   position: fixed;
   z-index: 20;
@@ -94,7 +96,7 @@
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(39, 49, 58, 0.38);
+  background: var(--entry-scrim);
 }
 
 .rulesPanel {
@@ -104,7 +106,7 @@
   padding: 1.25rem;
   background: var(--entry-surface);
   color: var(--entry-ink);
-  box-shadow: 0 18px 50px rgba(20, 37, 43, 0.18);
+  box-shadow: var(--entry-shadow);
 }
 
 .rulesHeader {
@@ -203,7 +205,7 @@
 .choiceCard:hover {
   border-color: var(--entry-accent);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(20, 37, 43, 0.12);
+  box-shadow: var(--entry-shadow-soft);
 }
 
 .choiceCard:active {
@@ -273,7 +275,7 @@
   border-radius: 0.875rem;
   padding: 1.75rem 1.25rem;
   background: var(--entry-surface);
-  box-shadow: 0 18px 50px rgba(20, 37, 43, 0.18);
+  box-shadow: var(--entry-shadow);
   text-align: center;
 }
 
@@ -376,7 +378,7 @@
   border-radius: 0.875rem;
   padding: 2rem 1.5rem;
   background: var(--entry-surface);
-  box-shadow: 0 18px 50px rgba(20, 37, 43, 0.18);
+  box-shadow: var(--entry-shadow);
   text-align: center;
 }
 

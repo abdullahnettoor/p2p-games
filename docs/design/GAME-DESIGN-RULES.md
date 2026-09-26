@@ -79,6 +79,7 @@ Every Game surface is hosted in a full-bleed `100dvh` container that conforms to
   - Shared lobby and entry flows (choice screen, room code entry, stranger search, invite pill) consume a small semantic CSS contract:
     - `--entry-surface`: Primary screen background
     - `--entry-surface-raised`: Elevated card and control background
+    - `--entry-surface-gradient`: Optional ambient surface lighting gradient
     - `--entry-ink`: Primary text and foreground print
     - `--entry-ink-muted`: Secondary text and subtle labels
     - `--entry-accent`: Host player brand accent and primary action highlights (blue family)
@@ -88,6 +89,9 @@ Every Game surface is hosted in a full-bleed `100dvh` container that conforms to
     - `--entry-focus`: Keyboard focus ring color
     - `--entry-urgent`: Alert, destructive, and timeout indicator
     - `--entry-font-label`: Optional compact label font for buttons and badges
+    - `--entry-scrim`: Modal backdrop and sheet scrim overlay
+    - `--entry-shadow`: Elevated card and modal panel shadow
+    - `--entry-shadow-soft`: Card interactive hover state shadow
   - Each Game's token file maps these variables to its own game tokens so shared screens render faithfully within that Game's aesthetic.
 
 ---

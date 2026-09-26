@@ -26,6 +26,7 @@ const GAME_TOKEN_PREFIX_MAP: Record<string, string> = {
 const ALLOWED_ENTRY_CONTRACT_VARS = new Set([
   '--entry-surface',
   '--entry-surface-raised',
+  '--entry-surface-gradient',
   '--entry-ink',
   '--entry-ink-muted',
   '--entry-accent',
@@ -35,6 +36,9 @@ const ALLOWED_ENTRY_CONTRACT_VARS = new Set([
   '--entry-focus',
   '--entry-urgent',
   '--entry-font-label',
+  '--entry-scrim',
+  '--entry-shadow',
+  '--entry-shadow-soft',
 ])
 
 /**

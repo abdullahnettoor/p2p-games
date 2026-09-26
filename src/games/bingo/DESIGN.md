@@ -290,6 +290,7 @@ Bingo maps the shared entry contract tokens to its scoped game tokens:
 | :--- | :--- | :--- | :--- |
 | `--entry-surface` | `var(--bingo-paper)` | `#F7F9F4` | Primary background of entry/lobby screens |
 | `--entry-surface-raised`| `var(--bingo-paper-raised)`| `#FFFFFF` | Cards, input fields, and elevated panels |
+| `--entry-surface-gradient`| `radial-gradient(...)` | (ambient radial + linear gradient) | Ambient scorecard paper lighting gradient |
 | `--entry-ink` | `var(--bingo-graphite)` | `#27313A` | Headings, room codes, and primary text |
 | `--entry-ink-muted` | `var(--bingo-graphite-muted)`| `#65716F` | Secondary descriptions and helper labels |
 | `--entry-accent` | `var(--bingo-host-ink)` | `#175E9C` | Host player accent and primary highlights |
@@ -299,6 +300,9 @@ Bingo maps the shared entry contract tokens to its scoped game tokens:
 | `--entry-focus` | `var(--bingo-focus)` | `#087E8B` | Keyboard focus ring |
 | `--entry-urgent` | `var(--bingo-urgent)` | `#B42335` | Timeout notices, error banners, destructive buttons |
 | `--entry-font-label` | `var(--bingo-font-label)` | `"Arial Narrow", ...` | Compact label font for buttons and badges |
+| `--entry-scrim` | `rgba(39, 49, 58, 0.38)` | `rgba(39, 49, 58, 0.38)` | Dimmed backdrop for entry modals and sheets |
+| `--entry-shadow` | `0 18px 50px rgba(20, 37, 43, 0.18)` | (strong shadow) | Elevated card and modal panel shadow |
+| `--entry-shadow-soft` | `0 4px 12px rgba(20, 37, 43, 0.12)` | (soft shadow) | Card interactive hover state shadow |
 
 ---
 
