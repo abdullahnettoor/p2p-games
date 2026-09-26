@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import { createLoopbackTransportPair } from '@/core/transport/LoopbackTransport'
 import { TicTacToeMatchCoordinator } from '../state/TicTacToeMatchCoordinator'
 import { TicTacToeTurnTimer } from './TicTacToeTurnTimer'
@@ -171,6 +171,11 @@ describe('TicTacToe Matchplay Components', () => {
       fireEvent.click(cell0)
 
       expect(host.snapshot.currentRoundState.board[0]).toBe('X')
+
+      // The mark must actually render and the turn must move on screen
+      expect(screen.getByTestId('ttt-cell-0')).toHaveAttribute('aria-label', 'Row 1 Column 1, marked with X')
+      expect(within(screen.getByTestId('ttt-cell-0')).getByTestId('ttt-mark-x')).toBeInTheDocument()
+      expect(screen.getByTestId('ttt-turn-indicator')).not.toHaveTextContent('Your turn')
 
       host.destroy()
     })
