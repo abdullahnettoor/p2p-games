@@ -2,55 +2,113 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 
-export interface TokenViolation {
+interface TokenViolation {
   file: string
   line: number
   tokenPrefix: string
   lineContent: string
+  reason: string
 }
 
 /**
- * Checks a file content against game token isolation rules:
- * - `--bingo-*` tokens are only permitted within `src/games/bingo/`
- * - `--ttt-*` tokens are only permitted within `src/games/tictactoe/`
- * - Shared components (e.g. `src/app/`, `src/core/`, `src/lib/`) must not use any game-specific tokens
+ * Mapping of game token prefixes to their designated directory.
+ * Adding a new game requires adding only one mapping here.
  */
-export function validateTokenIsolation(
-  filePath: string,
-  content: string
-): TokenViolation[] {
-  const normalizedPath = filePath.replace(/\\/g, '/')
-  const isBingoFolder = normalizedPath.includes('src/games/bingo/')
-  const isTicTacToeFolder = normalizedPath.includes('src/games/tictactoe/')
+const GAME_TOKEN_PREFIX_MAP: Record<string, string> = {
+  '--bingo-': 'src/games/bingo',
+  '--ttt-': 'src/games/tictactoe',
+}
 
+/**
+ * Approved CSS contract variables that shared components and shared entry screens
+ * are permitted to consume per #17 decisions and docs/design/GAME-DESIGN-RULES.md.
+ */
+const ALLOWED_ENTRY_CONTRACT_VARS = new Set([
+  '--entry-surface',
+  '--entry-surface-raised',
+  '--entry-ink',
+  '--entry-ink-muted',
+  '--entry-accent',
+  '--entry-rule',
+  '--entry-focus',
+  '--entry-urgent',
+])
+
+/**
+ * Checks a file's content against design token isolation and shared component rules:
+ * 1. Game-specific tokens (e.g. `--bingo-*`, `--ttt-*`) are only permitted within their designated game folder.
+ * 2. Shared components outside game folders (such as `src/components/` and `src/app/(platform)/`)
+ *    must never reference game-scoped tokens, rejected `--p-*` tokens, or unauthorized entry variables.
+ */
+function validateFileTokenUsage(filePath: string, content: string): TokenViolation[] {
+  const normalizedPath = filePath.replace(/\\/g, '/')
   const violations: TokenViolation[] = []
   const lines = content.split('\n')
 
-  lines.forEach((lineText, idx) => {
-    // Check for --bingo-* outside bingo folder
-    if (!isBingoFolder && /--bingo-[a-zA-Z0-9_-]+/.test(lineText)) {
-      violations.push({
-        file: filePath,
-        line: idx + 1,
-        tokenPrefix: '--bingo-',
-        lineContent: lineText.trim(),
-      })
-    }
+  // Rule 1: Enforce game folder isolation for every registered game prefix
+  for (const [prefix, allowedFolder] of Object.entries(GAME_TOKEN_PREFIX_MAP)) {
+    const isAllowedFolder = normalizedPath.includes(allowedFolder)
 
-    // Check for --ttt-* outside tictactoe folder
-    if (!isTicTacToeFolder && /--ttt-[a-zA-Z0-9_-]+/.test(lineText)) {
-      violations.push({
-        file: filePath,
-        line: idx + 1,
-        tokenPrefix: '--ttt-',
-        lineContent: lineText.trim(),
+    if (!isAllowedFolder) {
+      lines.forEach((lineText, idx) => {
+        if (lineText.includes(prefix)) {
+          violations.push({
+            file: filePath,
+            line: idx + 1,
+            tokenPrefix: prefix,
+            lineContent: lineText.trim(),
+            reason: `Token "${prefix}" is only permitted in "${allowedFolder}", but referenced in "${filePath}"`,
+          })
+        }
       })
     }
-  })
+  }
+
+  // Rule 2: Shared components use only the entry contract variables
+  const isSharedComponent =
+    normalizedPath.includes('src/components/') ||
+    normalizedPath.includes('src/app/(platform)/')
+
+  if (isSharedComponent) {
+    lines.forEach((lineText, idx) => {
+      // Find all var(--...) usages
+      const varMatches = lineText.matchAll(/var\(\s*(--[a-zA-Z0-9_-]+)/g)
+      for (const match of varMatches) {
+        const varName = match[1]
+
+        // Reject platform token proposal (--p-*) per ADR 0008 & Issue #17
+        if (varName.startsWith('--p-')) {
+          violations.push({
+            file: filePath,
+            line: idx + 1,
+            tokenPrefix: '--p-',
+            lineContent: lineText.trim(),
+            reason: `Shared component uses rejected platform token "${varName}"; use --entry-* contract instead`,
+          })
+        }
+
+        // If an entry variable is referenced, it must be in the approved entry contract
+        if (varName.startsWith('--entry-') && !ALLOWED_ENTRY_CONTRACT_VARS.has(varName)) {
+          violations.push({
+            file: filePath,
+            line: idx + 1,
+            tokenPrefix: varName,
+            lineContent: lineText.trim(),
+            reason: `Shared component uses undeclared entry contract variable "${varName}"`,
+          })
+        }
+      }
+    })
+  }
 
   return violations
 }
 
+/**
+ * Recursively scans source files across the workspace.
+ * Only excludes the guardrail and contrast test suites themselves (which contain test fixture strings).
+ * All other files—including other test and spec files—are inspected.
+ */
 function scanSourceFiles(dir: string): string[] {
   const results: string[] = []
   const entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -69,12 +127,15 @@ function scanSourceFiles(dir: string): string[] {
       results.push(...scanSourceFiles(fullPath))
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name)
-      // Check code and stylesheet files
       if (['.css', '.tsx', '.ts', '.jsx', '.js'].includes(ext)) {
-        // Exclude test files so assertions / string fixtures don't trigger false positives
-        if (!/\.(test|spec)\.(ts|tsx|js|jsx)$/.test(entry.name)) {
-          results.push(fullPath)
+        // Exclude only the design guardrail and contrast test suites that test/assert token literals
+        if (
+          entry.name === 'design-guardrails.test.ts' ||
+          entry.name === 'contrast.test.ts'
+        ) {
+          continue
         }
+        results.push(fullPath)
       }
     }
   }
@@ -83,7 +144,7 @@ function scanSourceFiles(dir: string): string[] {
 }
 
 describe('Design Token Isolation Guardrails', () => {
-  it('enforces that --bingo-* tokens are used only in the Bingo folder and --ttt-* in the Tic-Tac-Toe folder', () => {
+  it('enforces token isolation across all scanned project files via prefix map', () => {
     const srcDir = path.resolve(__dirname, '..')
     const files = scanSourceFiles(srcDir)
 
@@ -93,16 +154,13 @@ describe('Design Token Isolation Guardrails', () => {
 
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf-8')
-      const violations = validateTokenIsolation(file, content)
+      const violations = validateFileTokenUsage(file, content)
       allViolations.push(...violations)
     }
 
     if (allViolations.length > 0) {
       const details = allViolations
-        .map(
-          (v) =>
-            `${v.file}:${v.line} uses ${v.tokenPrefix} outside its folder: "${v.lineContent}"`
-        )
+        .map((v) => `${v.file}:${v.line} (${v.reason}): "${v.lineContent}"`)
         .join('\n')
       expect.fail(`Design token isolation violations detected:\n${details}`)
     }
@@ -110,25 +168,19 @@ describe('Design Token Isolation Guardrails', () => {
     expect(allViolations).toEqual([])
   })
 
-  describe('validateTokenIsolation unit assertions', () => {
-    it('flags --bingo-* token used in a shared platform file', () => {
+  describe('validateFileTokenUsage unit assertions', () => {
+    it('flags game tokens used in shared platform files', () => {
       const testFile = 'src/app/(platform)/page.module.css'
-      const sampleContent = '.card { background: var(--bingo-paper); }'
-      const violations = validateTokenIsolation(testFile, sampleContent)
+      const bingoContent = '.card { background: var(--bingo-paper); }'
+      const tttContent = 'const ink = "var(--ttt-ink)"'
 
-      expect(violations).toHaveLength(1)
-      expect(violations[0].tokenPrefix).toBe('--bingo-')
-      expect(violations[0].line).toBe(1)
-    })
+      const bingoViolations = validateFileTokenUsage(testFile, bingoContent)
+      expect(bingoViolations).toHaveLength(1)
+      expect(bingoViolations[0].tokenPrefix).toBe('--bingo-')
 
-    it('flags --ttt-* token used in a shared platform file', () => {
-      const testFile = 'src/app/(game)/tictactoe/page.tsx'
-      const sampleContent = 'const color = "var(--ttt-ink)"'
-      const violations = validateTokenIsolation(testFile, sampleContent)
-
-      expect(violations).toHaveLength(1)
-      expect(violations[0].tokenPrefix).toBe('--ttt-')
-      expect(violations[0].line).toBe(1)
+      const tttViolations = validateFileTokenUsage(testFile, tttContent)
+      expect(tttViolations).toHaveLength(1)
+      expect(tttViolations[0].tokenPrefix).toBe('--ttt-')
     })
 
     it('flags cross-game token contamination between games', () => {
@@ -136,24 +188,62 @@ describe('Design Token Isolation Guardrails', () => {
       const tttUsingBingo = 'src/games/tictactoe/components/TicTacToeBoard.tsx'
 
       expect(
-        validateTokenIsolation(bingoUsingTtt, 'var(--ttt-margin-line)')
+        validateFileTokenUsage(bingoUsingTtt, 'var(--ttt-margin-line)')
       ).toHaveLength(1)
 
       expect(
-        validateTokenIsolation(tttUsingBingo, 'var(--bingo-paper)')
+        validateFileTokenUsage(tttUsingBingo, 'var(--bingo-paper)')
       ).toHaveLength(1)
     })
 
-    it('allows legitimate tokens inside their designated game folders', () => {
+    it('flags shared components using rejected --p-* platform tokens', () => {
+      const sharedComponent = 'src/components/entry/ChoiceScreen.module.css'
+      const sampleContent = '.sheet { background: var(--p-surface); }'
+      const violations = validateFileTokenUsage(sharedComponent, sampleContent)
+
+      expect(violations).toHaveLength(1)
+      expect(violations[0].tokenPrefix).toBe('--p-')
+    })
+
+    it('flags shared components using unauthorized entry contract variables', () => {
+      const sharedComponent = 'src/components/entry/ChoiceScreen.module.css'
+      const sampleContent = '.sheet { background: var(--entry-unknown-shadow); }'
+      const violations = validateFileTokenUsage(sharedComponent, sampleContent)
+
+      expect(violations).toHaveLength(1)
+      expect(violations[0].tokenPrefix).toBe('--entry-unknown-shadow')
+    })
+
+    it('allows valid entry contract variables in shared components', () => {
+      const sharedComponent = 'src/components/entry/ChoiceScreen.module.css'
+      const validContent = `
+        .container {
+          background: var(--entry-surface);
+          color: var(--entry-ink);
+          border: 1px solid var(--entry-rule);
+        }
+        .raised {
+          background: var(--entry-surface-raised);
+          outline-color: var(--entry-focus);
+        }
+      `
+      const violations = validateFileTokenUsage(sharedComponent, validContent)
+      expect(violations).toEqual([])
+    })
+
+    it('allows legitimate game tokens inside their designated game folders', () => {
       const validBingo = 'src/games/bingo/components/BingoMatchLobby.module.css'
       const validTtt = 'src/games/tictactoe/ticTacToeTokens.css'
 
       expect(
-        validateTokenIsolation(validBingo, '.title { color: var(--bingo-graphite); }')
+        validateFileTokenUsage(
+          validBingo,
+          '.title { color: var(--bingo-graphite); }'
+        )
       ).toEqual([])
 
       expect(
-        validateTokenIsolation(validTtt, '.board { border: var(--ttt-rule); }')
+        validateFileTokenUsage(validTtt, '.board { border: var(--ttt-rule); }')
       ).toEqual([])
     })
   })

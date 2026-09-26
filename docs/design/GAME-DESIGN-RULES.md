@@ -25,12 +25,12 @@ Each Game owns its visual identity, token file, and `DESIGN.md` (see [ADR 0008: 
 - **Text Contrast (WCAG 1.4.3 AA):**
   - All body text, headings, numbers, and actionable labels must achieve a contrast ratio of at least **4.5:1** against their background.
   - Large text (at least 18pt / 24px regular or 14pt / 18.66px bold) and graphical components / user interface controls (WCAG 1.4.11 AA) must achieve at least **3.0:1**.
-  - Documented text and background token pairs in each Game's `DESIGN.md` are audited by automated unit tests in `npm test`.
+  - Documented text and background token pairs in each Game's token stylesheet and `DESIGN.md` are audited by automated unit tests in `npm test`.
 - **Visible Focus:**
   - Every interactive control must provide a high-contrast focus indicator (e.g. a 3px outline with 2px offset) that remains clearly visible against both the game surface and adjacent ink marks.
-- **Tapping Target Sizes (WCAG 2.5.5 / 2.5.8):**
-  - Primary interactive gameplay targets (board cells, primary buttons) must measure at least **44 × 44 CSS pixels**.
-  - Non-board secondary chrome (utility buttons, sound toggles, sheet triggers) may be reduced to a minimum of **36 × 36 CSS pixels** only when strictly costed to satisfy the mobile viewport budget (see [ADR 0009](../adr/0009-viewport-fit-contract-for-game-surfaces.md)), exceeding the WCAG 2.5.8 AA minimum of 24 × 24px.
+- **Tapping Target Sizes (WCAG 2.5.5 / 2.5.8 & ADR 0009):**
+  - Board cells must measure at least **44 × 44 CSS pixels** where viewport width permits.
+  - Other touch controls target at least **36 × 36 CSS pixels** (or 44px where space permits), including controls on result and comparison screens. This reduction from 44px is deliberately costed to preserve the mobile viewport budget under [ADR 0009](../adr/0009-viewport-fit-contract-for-game-surfaces.md) while comfortably exceeding the WCAG 2.5.8 AA minimum of 24 × 24px.
 
 ---
 
@@ -49,16 +49,19 @@ Each Game owns its visual identity, token file, and `DESIGN.md` (see [ADR 0008: 
 
 Every Game surface is hosted in a full-bleed `100dvh` container that conforms to [ADR 0009: Viewport-fit contract for Game surfaces](../adr/0009-viewport-fit-contract-for-game-surfaces.md):
 
-- **No page scroll at default zoom:**
-  - On viewports of at least **320 × 568px** at default text scale, the entire Match surface must fit within the viewport without vertical scrolling.
+- **100dvh-first Shell screens:**
+  - The Match, Lobby, result, and comparison surfaces are `100dvh`-first Shell screens.
+  - Their containers may page-scroll only when content genuinely cannot fit; they must not clip content to preserve a nominal no-scroll state.
 - **Board sized by available height:**
-  - The board is sized dynamically from available vertical height and capped by width, remaining the dominant object on screen.
+  - The board is sized dynamically from available vertical height and capped near 480px on wide screens, remaining the dominant square object on screen.
 - **Non-Board chrome budget:**
-  - Chrome outside the board (utility bar, scoreboard, turn indicator, actions) must remain compact (budgeted to approximately 150px total height on small screens).
+  - The non-Board Match budget is approximately 150px: Shell bar, status strip, and action row share that budget.
 - **Overlays over reflow:**
-  - Mid-game interactions (rules, notes, match logs, reactions) must appear as sheets, drawers, or floating overlays rather than pushing or reflowing the board.
+  - Call slips, transient announcements, and mid-game interactions (rules, notes, match logs, reactions) must appear as sheets, drawers, or floating overlays rather than pushing or reflowing the board.
+- **Landscape reflow:**
+  - Landscape uses a Board-left/status-right reflow. Supporting information and expanded notes stack below the status strip in the right column, using freed horizontal space while keeping the board the largest object.
 - **Safe fallback:**
-  - If content genuinely cannot fit (e.g. at 200% text zoom or extreme landscape), the container must fall back to standard vertical scrolling. Content must **never be clipped**.
+  - At 200% text zoom or extreme landscape, text and controls may cause page scrolling when the content genuinely cannot fit; no content is clipped and browser zoom remains enabled.
 
 ---
 
@@ -67,10 +70,13 @@ Every Game surface is hosted in a full-bleed `100dvh` container that conforms to
 - **Game ownership of tokens:**
   - Each Game defines its own custom properties under its own class scope:
     - Bingo: `--bingo-*` under `.bingoTokenScope`
-    - Tic-Tac-Toe: `--ttt-*` under `.tttTokenScope`
+    - Tic-Tac-Toe: `--ttt-*` under `.tttTokenScope` *(planned in #21)*
   - A Game's tokens must never be used outside that Game's directory (`src/games/<game>/`). This is enforced by automated guardrail tests in `npm test`.
-- **Shared Entry-Screen Contract:**
-  - Shared lobby and entry flows (choice screen, room code entry, stranger search, invite pill) consume a small semantic CSS contract:
+- **Shared components constraint:**
+  - Shared components (such as shared entry screens or platform chrome outside of a specific game folder) must never reference game-scoped tokens (`--bingo-*`, `--ttt-*`).
+  - When shared entry screens are extracted (*planned in #22*), shared components may consume only the shared entry contract variables (`--entry-*`).
+- **Shared Entry-Screen Contract (Planned in #22):**
+  - Shared lobby and entry flows (choice screen, room code entry, stranger search, invite pill) will consume a small semantic CSS contract:
     - `--entry-surface`: Primary screen background
     - `--entry-surface-raised`: Elevated card and control background
     - `--entry-ink`: Primary text and foreground print
@@ -79,7 +85,7 @@ Every Game surface is hosted in a full-bleed `100dvh` container that conforms to
     - `--entry-rule`: Grid borders and divider lines
     - `--entry-focus`: Keyboard focus ring color
     - `--entry-urgent`: Alert, destructive, and timeout indicator
-  - Each Game's token file maps these variables to its own game tokens so shared screens render faithfully within that Game's aesthetic.
+  - Each Game's token file will map these variables to its own game tokens so shared screens render faithfully within that Game's aesthetic.
 
 ---
 

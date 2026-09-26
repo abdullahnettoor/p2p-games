@@ -6,7 +6,7 @@ import path from 'path'
  * Calculates the relative luminance of an sRGB hex color per WCAG 2.1 specifications:
  * https://www.w3.org/WAI/GL/wiki/Relative_luminance
  */
-export function getRelativeLuminance(hex: string): number {
+function getRelativeLuminance(hex: string): number {
   const cleanHex = hex.replace(/^#/, '').trim()
   let r: number, g: number, b: number
 
@@ -32,7 +32,7 @@ export function getRelativeLuminance(hex: string): number {
  * Calculates the contrast ratio between two hex colors per WCAG 2.1:
  * (L1 + 0.05) / (L2 + 0.05), where L1 is the lighter color.
  */
-export function getContrastRatio(hex1: string, hex2: string): number {
+function getContrastRatio(hex1: string, hex2: string): number {
   const lum1 = getRelativeLuminance(hex1)
   const lum2 = getRelativeLuminance(hex2)
   const lighter = Math.max(lum1, lum2)
@@ -41,13 +41,23 @@ export function getContrastRatio(hex1: string, hex2: string): number {
 }
 
 /**
- * Converts a hex color to HSL to check hue families and saturation invariants.
+ * Converts a 3-digit or 6-digit hex color to HSL to check hue families and saturation invariants.
  */
-export function hexToHsl(hex: string): { h: number; s: number; l: number } {
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const cleanHex = hex.replace(/^#/, '').trim()
-  const r = parseInt(cleanHex.substring(0, 2), 16) / 255
-  const g = parseInt(cleanHex.substring(2, 4), 16) / 255
-  const b = parseInt(cleanHex.substring(4, 6), 16) / 255
+  let r: number, g: number, b: number
+
+  if (cleanHex.length === 3) {
+    r = parseInt(cleanHex[0] + cleanHex[0], 16) / 255
+    g = parseInt(cleanHex[1] + cleanHex[1], 16) / 255
+    b = parseInt(cleanHex[2] + cleanHex[2], 16) / 255
+  } else if (cleanHex.length === 6) {
+    r = parseInt(cleanHex.substring(0, 2), 16) / 255
+    g = parseInt(cleanHex.substring(2, 4), 16) / 255
+    b = parseInt(cleanHex.substring(4, 6), 16) / 255
+  } else {
+    throw new Error(`Invalid hex color: ${hex}`)
+  }
 
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
@@ -75,125 +85,161 @@ export function hexToHsl(hex: string): { h: number; s: number; l: number } {
   return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) }
 }
 
+/**
+ * Parses CSS custom properties from stylesheet content into a key-value Map.
+ */
+function parseCssTokens(cssContent: string): Map<string, string> {
+  const tokens = new Map<string, string>()
+  const declRegex = /(--[a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g
+  let match: RegExpExecArray | null
+  while ((match = declRegex.exec(cssContent)) !== null) {
+    tokens.set(match[1].trim(), match[2].trim())
+  }
+  return tokens
+}
+
+/**
+ * Parses color entries from DESIGN.md YAML frontmatter into a key-value Map.
+ */
+function parseDesignMdColors(mdContent: string): Map<string, string> {
+  const colorsMatch = mdContent.match(/colors:\s*\n([\s\S]*?)(?=\ntypography:|\n---)/)
+  if (!colorsMatch) {
+    throw new Error('Could not find colors section in DESIGN.md frontmatter')
+  }
+
+  const colorMap = new Map<string, string>()
+  const lines = colorsMatch[1].split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes(':')) continue
+    const [key, ...rest] = trimmed.split(':')
+    const value = rest.join(':').replace(/["']/g, '').trim()
+    colorMap.set(key.trim(), value)
+  }
+  return colorMap
+}
+
 describe('Design System Contrast & Color Invariants', () => {
   describe('WCAG calculation validation', () => {
     it('accurately calculates black on white as 21:1 and white on white as 1:1', () => {
       expect(getContrastRatio('#000000', '#FFFFFF')).toBeCloseTo(21, 0)
       expect(getContrastRatio('#FFFFFF', '#FFFFFF')).toBeCloseTo(1, 0)
     })
-  })
 
-  describe('Bingo design system contrast pairs', () => {
-    const paper = '#F7F9F4'
-    const paperRaised = '#FFFFFF'
-
-    const textColors = [
-      { name: 'graphite', hex: '#27313A', minExpected: 4.5 },
-      { name: 'graphite-muted', hex: '#65716F', minExpected: 4.5 },
-      { name: 'host-ink', hex: '#175E9C', minExpected: 4.5 },
-      { name: 'guest-ink', hex: '#A63D57', minExpected: 4.5 },
-      { name: 'warning', hex: '#A85B16', minExpected: 4.5 },
-      { name: 'urgent', hex: '#B42335', minExpected: 4.5 },
-      { name: 'focus', hex: '#087E8B', minExpected: 4.5 },
-    ]
-
-    textColors.forEach(({ name, hex, minExpected }) => {
-      it(`ensures ${name} (${hex}) meets ≥ ${minExpected}:1 contrast against base paper (${paper})`, () => {
-        const ratio = getContrastRatio(hex, paper)
-        expect(ratio).toBeGreaterThanOrEqual(minExpected)
-      })
-
-      it(`ensures ${name} (${hex}) meets ≥ ${minExpected}:1 contrast against raised paper (${paperRaised})`, () => {
-        const ratio = getContrastRatio(hex, paperRaised)
-        expect(ratio).toBeGreaterThanOrEqual(minExpected)
-      })
-    })
-
-    describe('Inverted text contrast on filled buttons/badges', () => {
-      const whiteText = '#FFFFFF'
-      const filledBgs = [
-        { name: 'button-primary (graphite)', hex: '#27313A' },
-        { name: 'host badge/pill (host-ink)', hex: '#175E9C' },
-        { name: 'guest badge/pill (guest-ink)', hex: '#A63D57' },
-        { name: 'urgent alert (urgent)', hex: '#B42335' },
-      ]
-
-      filledBgs.forEach(({ name, hex }) => {
-        it(`ensures white text meets ≥ 4.5:1 contrast against ${name} (${hex})`, () => {
-          const ratio = getContrastRatio(whiteText, hex)
-          expect(ratio).toBeGreaterThanOrEqual(4.5)
-        })
-      })
+    it('correctly handles 3-digit shorthand hex values', () => {
+      expect(getContrastRatio('#000', '#fff')).toBeCloseTo(21, 0)
+      const hslWhite = hexToHsl('#fff')
+      expect(hslWhite.l).toBe(100)
     })
   })
 
-  describe('Player ink color family invariants (Host = Blue, Guest = Red)', () => {
-    it('verifies Bingo player inks belong to blue and red families respectively', () => {
-      const hostInk = '#175E9C'
-      const guestInk = '#A63D57'
+  describe('Bingo CSS Token Parsing & DESIGN.md Parity', () => {
+    const cssPath = path.resolve(__dirname, 'bingo/bingoTokens.css')
+    const mdPath = path.resolve(__dirname, 'bingo/DESIGN.md')
 
-      const hostHsl = hexToHsl(hostInk)
-      const guestHsl = hexToHsl(guestInk)
+    expect(fs.existsSync(cssPath)).toBe(true)
+    expect(fs.existsSync(mdPath)).toBe(true)
 
-      // Host ink must be in the blue hue range (180° - 250°)
-      expect(hostHsl.h).toBeGreaterThanOrEqual(180)
-      expect(hostHsl.h).toBeLessThanOrEqual(250)
+    const cssTokens = parseCssTokens(fs.readFileSync(cssPath, 'utf-8'))
+    const docTokens = parseDesignMdColors(fs.readFileSync(mdPath, 'utf-8'))
 
-      // Guest ink must be in the red/berry hue range (330° - 360° or 0° - 30°)
-      const isRedFamily = guestHsl.h >= 330 || guestHsl.h <= 30
-      expect(isRedFamily).toBe(true)
+    it('verifies all hex color tokens in DESIGN.md strictly match bingoTokens.css', () => {
+      expect(cssTokens.size).toBeGreaterThan(0)
+      expect(docTokens.size).toBeGreaterThan(0)
 
-      // Inks must have clear contrast from each other so they do not clash or confuse
-      const inkContrast = getContrastRatio(hostInk, guestInk)
-      expect(inkContrast).toBeGreaterThan(1.0)
+      docTokens.forEach((docVal, key) => {
+        // Only check hex colors against CSS tokens
+        if (docVal.startsWith('#')) {
+          const expectedCssToken = `--bingo-${key}`
+          const cssVal = cssTokens.get(expectedCssToken)
+          expect(cssVal).toBeDefined()
+          expect(cssVal!.toLowerCase()).toBe(docVal.toLowerCase())
+        }
+      })
     })
-  })
 
-  describe('Documented game DESIGN.md contrast auditing', () => {
-    it('audits all color tokens documented in src/games/bingo/DESIGN.md', () => {
-      const bingoDesignPath = path.resolve(__dirname, 'bingo/DESIGN.md')
-      expect(fs.existsSync(bingoDesignPath)).toBe(true)
+    describe('Contrast evaluation on actual parsed CSS tokens', () => {
+      const paper = cssTokens.get('--bingo-paper')!
+      const paperRaised = cssTokens.get('--bingo-paper-raised')!
 
-      const content = fs.readFileSync(bingoDesignPath, 'utf-8')
-
-      // Extract colors block from YAML frontmatter
-      const colorsMatch = content.match(/colors:\s*\n([\s\S]*?)(?=\ntypography:|\n---)/)
-      expect(colorsMatch).not.toBeNull()
-
-      const colorsBlock = colorsMatch![1]
-      const colorEntries = colorsBlock
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith('#') && line.includes(':'))
-        .map((line) => {
-          const [key, ...rest] = line.split(':')
-          const value = rest.join(':').replace(/["']/g, '').trim()
-          return { key: key.trim(), value }
-        })
-
-      const colorMap = new Map(colorEntries.map((e) => [e.key, e.value]))
-
-      const paper = colorMap.get('paper')!
       expect(paper).toBeDefined()
+      expect(paperRaised).toBeDefined()
 
-      const requiredReadableTextKeys = [
-        'graphite',
-        'graphite-muted',
-        'host-ink',
-        'guest-ink',
-        'warning',
-        'urgent',
+      const readableTextTokens = [
+        { name: 'graphite', varName: '--bingo-graphite', minExpected: 4.5 },
+        { name: 'graphite-muted', varName: '--bingo-graphite-muted', minExpected: 4.5 },
+        { name: 'host-ink', varName: '--bingo-host-ink', minExpected: 4.5 },
+        { name: 'guest-ink', varName: '--bingo-guest-ink', minExpected: 4.5 },
+        { name: 'warning', varName: '--bingo-warning', minExpected: 4.5 },
+        { name: 'urgent', varName: '--bingo-urgent', minExpected: 4.5 },
+        { name: 'focus', varName: '--bingo-focus', minExpected: 4.5 },
       ]
 
-      for (const key of requiredReadableTextKeys) {
-        const hex = colorMap.get(key)
-        expect(hex, `Expected token ${key} to be defined in frontmatter`).toBeDefined()
-        const ratio = getContrastRatio(hex!, paper)
-        expect(
-          ratio,
-          `Token ${key} (${hex}) on paper (${paper}) has contrast ${ratio.toFixed(2)}, expected >= 4.5:1`
-        ).toBeGreaterThanOrEqual(4.5)
-      }
+      readableTextTokens.forEach(({ name, varName, minExpected }) => {
+        const hex = cssTokens.get(varName)!
+
+        it(`ensures parsed ${varName} (${hex}) meets ≥ ${minExpected}:1 contrast against base paper (${paper})`, () => {
+          expect(hex).toBeDefined()
+          const ratio = getContrastRatio(hex, paper)
+          expect(ratio).toBeGreaterThanOrEqual(minExpected)
+        })
+
+        it(`ensures parsed ${varName} (${hex}) meets ≥ ${minExpected}:1 contrast against raised paper (${paperRaised})`, () => {
+          expect(hex).toBeDefined()
+          const ratio = getContrastRatio(hex, paperRaised)
+          expect(ratio).toBeGreaterThanOrEqual(minExpected)
+        })
+      })
+
+      describe('Inverted text contrast on filled buttons/badges from CSS tokens', () => {
+        const whiteText = paperRaised
+        const filledTokens = [
+          { name: 'primary button', varName: '--bingo-graphite' },
+          { name: 'host badge/pill', varName: '--bingo-host-ink' },
+          { name: 'guest badge/pill', varName: '--bingo-guest-ink' },
+          { name: 'urgent alert', varName: '--bingo-urgent' },
+        ]
+
+        filledTokens.forEach(({ name, varName }) => {
+          const hex = cssTokens.get(varName)!
+
+          it(`ensures white text meets ≥ 4.5:1 contrast against ${name} (${varName}: ${hex})`, () => {
+            expect(hex).toBeDefined()
+            const ratio = getContrastRatio(whiteText, hex)
+            expect(ratio).toBeGreaterThanOrEqual(4.5)
+          })
+        })
+      })
+
+      describe('Player ink color family invariants (Host = Blue, Guest = Red)', () => {
+        const hostInk = cssTokens.get('--bingo-host-ink')!
+        const guestInk = cssTokens.get('--bingo-guest-ink')!
+
+        it('verifies parsed CSS player inks belong to blue and red families respectively with distinct hue separation', () => {
+          expect(hostInk).toBeDefined()
+          expect(guestInk).toBeDefined()
+
+          const hostHsl = hexToHsl(hostInk)
+          const guestHsl = hexToHsl(guestInk)
+
+          // Host ink must be in the blue hue range (180° - 250°)
+          expect(hostHsl.h).toBeGreaterThanOrEqual(180)
+          expect(hostHsl.h).toBeLessThanOrEqual(250)
+
+          // Guest ink must be in the red/berry hue range (330° - 360° or 0° - 30°)
+          const isRedFamily = guestHsl.h >= 330 || guestHsl.h <= 30
+          expect(isRedFamily).toBe(true)
+
+          // Inks must have clear saturation (not desaturated gray tones)
+          expect(hostHsl.s).toBeGreaterThanOrEqual(40)
+          expect(guestHsl.s).toBeGreaterThanOrEqual(40)
+
+          // Inks must have a meaningful angular hue separation on the 360° color wheel (≥ 90°)
+          const rawDiff = Math.abs(hostHsl.h - guestHsl.h)
+          const angularSeparation = Math.min(rawDiff, 360 - rawDiff)
+          expect(angularSeparation).toBeGreaterThanOrEqual(90)
+        })
+      })
     })
   })
 })
