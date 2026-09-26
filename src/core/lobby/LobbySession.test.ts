@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { createLoopbackTransportPair } from '@/core/transport/LoopbackTransport'
 import { LobbySession } from './LobbySession'
 import { MatchStartEvent } from './types'
+import { BestOfSeriesLength } from '@/core/series'
 
 describe('LobbySession', () => {
   it('initializes host and guest in waiting/connecting states, then connects', async () => {
@@ -204,5 +205,164 @@ describe('LobbySession', () => {
     expect(hostSession.state.roomCode).toBe('K7M4QX')
     expect(hostSession.state.inviteUrl).toBe(initialInviteUrl)
     expect(hostSession.state.status).toBe('waiting')
+  })
+
+  describe('Series length synchronization', () => {
+    it('defaults series length to 3 and allows host to change length', async () => {
+      const [hostTransport, guestTransport] = createLoopbackTransportPair()
+      const hostSession = new LobbySession({ transport: hostTransport })
+      const guestSession = new LobbySession({ transport: guestTransport })
+
+      expect(hostSession.seriesLength).toBe(3)
+      expect(guestSession.seriesLength).toBe(3)
+
+      await hostSession.start()
+      await guestSession.start()
+
+      // Host updates series length to 5
+      hostSession.setSeriesLength(5)
+      expect(hostSession.seriesLength).toBe(5)
+      expect(hostSession.state.seriesLength).toBe(5)
+      expect(guestSession.seriesLength).toBe(5)
+      expect(guestSession.state.seriesLength).toBe(5)
+    })
+
+    it('un-readies both players when series length changes', async () => {
+      const [hostTransport, guestTransport] = createLoopbackTransportPair()
+      const hostSession = new LobbySession<null>({
+        transport: hostTransport,
+        validateSetup: () => true,
+      })
+      const guestSession = new LobbySession<null>({
+        transport: guestTransport,
+        validateSetup: () => true,
+      })
+
+      await hostSession.start()
+      await guestSession.start()
+
+      // Both players ready up
+      guestSession.setReady(true)
+      expect(hostSession.state.remotePlayer?.isReady).toBe(true)
+
+      // Host changes series length
+      hostSession.setSeriesLength(1)
+
+      expect(hostSession.state.localPlayer.isReady).toBe(false)
+      expect(hostSession.state.remotePlayer?.isReady).toBe(false)
+      expect(guestSession.state.localPlayer.isReady).toBe(false)
+      expect(guestSession.state.remotePlayer?.isReady).toBe(false)
+    })
+
+    it('passes chosen series length in match_start to both players', async () => {
+      const [hostTransport, guestTransport] = createLoopbackTransportPair()
+      let hostMatchStart: MatchStartEvent<null> | null = null
+      let guestMatchStart: MatchStartEvent<null> | null = null
+
+      const hostSession = new LobbySession<null>({
+        transport: hostTransport,
+        validateSetup: () => true,
+        onMatchStart: (event) => {
+          hostMatchStart = event
+        },
+      })
+      const guestSession = new LobbySession<null>({
+        transport: guestTransport,
+        validateSetup: () => true,
+        onMatchStart: (event) => {
+          guestMatchStart = event
+        },
+      })
+
+      await hostSession.start()
+      await guestSession.start()
+
+      hostSession.setSeriesLength(5)
+
+      guestSession.setReady(true)
+      hostSession.setReady(true)
+
+      expect(hostMatchStart).not.toBeNull()
+      expect(guestMatchStart).not.toBeNull()
+      expect(hostMatchStart!.seriesLength).toBe(5)
+      expect(guestMatchStart!.seriesLength).toBe(5)
+    })
+
+    it('throws if a guest attempts to set series length directly', async () => {
+      const [, guestTransport] = createLoopbackTransportPair()
+      const guestSession = new LobbySession({ transport: guestTransport })
+
+      expect(() => {
+        guestSession.setSeriesLength(5)
+      }).toThrow(/only the host can set the series length/i)
+    })
+
+    it('ignores series_length messages received on host from guest', async () => {
+      const [hostTransport, guestTransport] = createLoopbackTransportPair()
+      const hostSession = new LobbySession({ transport: hostTransport })
+      const guestSession = new LobbySession({ transport: guestTransport })
+
+      await hostSession.start()
+      await guestSession.start()
+
+      expect(hostSession.seriesLength).toBe(3)
+
+      // Malicious or rogue guest sends a series_length message
+      guestTransport.send({
+        type: 'series_length',
+        payload: { seriesLength: 5 },
+      })
+
+      // Host should remain at series length 3
+      expect(hostSession.seriesLength).toBe(3)
+      expect(hostSession.state.seriesLength).toBe(3)
+    })
+
+    it('ignores match_start messages received on host from guest', async () => {
+      const [hostTransport, guestTransport] = createLoopbackTransportPair()
+      let hostMatchStarted = false
+
+      const hostSession = new LobbySession({
+        transport: hostTransport,
+        onMatchStart: () => {
+          hostMatchStarted = true
+        },
+      })
+      const guestSession = new LobbySession({ transport: guestTransport })
+
+      await hostSession.start()
+      await guestSession.start()
+
+      // Guest sends rogue match_start message
+      guestTransport.send({
+        type: 'match_start',
+        payload: {
+          startingPlayerId: 'rogue-id',
+          timestamp: Date.now(),
+          seriesLength: 1,
+        },
+      })
+
+      // Host must ignore it
+      expect(hostMatchStarted).toBe(false)
+    })
+
+    it('ignores invalid series length received by guest', async () => {
+      const [hostTransport, guestTransport] = createLoopbackTransportPair()
+      const hostSession = new LobbySession({ transport: hostTransport })
+      const guestSession = new LobbySession({ transport: guestTransport })
+
+      await hostSession.start()
+      await guestSession.start()
+
+      // Host transport sends invalid series length
+      hostTransport.send({
+        type: 'series_length',
+        payload: { seriesLength: 7 as unknown as BestOfSeriesLength },
+      })
+
+      // Guest should ignore and remain at 3
+      expect(guestSession.seriesLength).toBe(3)
+    })
   })
 })

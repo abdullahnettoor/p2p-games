@@ -96,8 +96,8 @@ async function run() {
 
     const startedAt = Date.now()
 
-    log('· host: opening /tictactoe')
-    await hostPage.goto(`${BASE_URL}/tictactoe`, { waitUntil: 'domcontentloaded' })
+    log('· host: opening /tictactoe/poc')
+    await hostPage.goto(`${BASE_URL}/tictactoe/poc`, { waitUntil: 'domcontentloaded' })
 
     await hostPage
       .getByTestId('poc-local-id')
@@ -107,7 +107,7 @@ async function run() {
     log(`✓ host registered with signaling server as ${matchId} (${Date.now() - startedAt}ms)`)
 
     log('· guest: opening invite link')
-    await guestPage.goto(`${BASE_URL}/tictactoe?match=${matchId}`, {
+    await guestPage.goto(`${BASE_URL}/tictactoe/poc?match=${matchId}`, {
       waitUntil: 'domcontentloaded',
     })
 

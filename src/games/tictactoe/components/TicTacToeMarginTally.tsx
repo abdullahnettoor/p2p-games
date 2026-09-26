@@ -1,13 +1,14 @@
 'use client'
 
 import React, { useMemo } from 'react'
+import { BestOfSeriesLength } from '@/core/series'
 import styles from './TicTacToeMarginTally.module.css'
 import '../ticTacToeTokens.css'
 
 export interface TicTacToeMarginTallyProps {
   hostScore: number
   guestScore: number
-  bestOf?: 1 | 3 | 5 | number
+  bestOf?: BestOfSeriesLength
   className?: string
 }
 

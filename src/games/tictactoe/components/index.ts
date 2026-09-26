@@ -17,3 +17,12 @@ export { TicTacToePageTurn } from './TicTacToePageTurn'
 export type { TicTacToePageTurnProps } from './TicTacToePageTurn'
 
 export { TicTacToePrimitivesShowcase } from './TicTacToePrimitivesShowcase'
+
+export { TicTacToeSeriesPicker } from './TicTacToeSeriesPicker'
+export type { TicTacToeSeriesPickerProps } from './TicTacToeSeriesPicker'
+
+export { TicTacToeMatchLobby } from './TicTacToeMatchLobby'
+export type { TicTacToeMatchLobbyProps } from './TicTacToeMatchLobby'
+
+export { TicTacToeOnlineGame } from './TicTacToeOnlineGame'
+export type { TicTacToeOnlineGameProps } from './TicTacToeOnlineGame'
