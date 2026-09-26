@@ -56,52 +56,28 @@ export const TicTacToeBoardGrid: React.FC<TicTacToeBoardGridProps> = ({
         {/* Vertical line 1 (x ~ 100) */}
         <path
           d="M 100 8 C 99 90, 101 210, 99.5 292"
-          className={animatedStrokes ? styles.pencilStroke : undefined}
-          style={{
-            stroke: 'var(--ttt-pencil)',
-            strokeWidth: 4,
-            strokeLinecap: 'round',
-            fill: 'none',
-          }}
+          className={`${styles.pencilLine} ${animatedStrokes ? styles.pencilStroke : ''}`}
           data-testid="ttt-pencil-v1"
         />
         {/* Vertical line 2 (x ~ 200) */}
         <path
           d="M 200 6 C 201 100, 199 200, 200.5 294"
-          className={animatedStrokes ? styles.pencilStroke : undefined}
-          style={{
-            stroke: 'var(--ttt-pencil)',
-            strokeWidth: 4,
-            strokeLinecap: 'round',
-            fill: 'none',
-            animationDelay: animatedStrokes ? '30ms' : undefined,
-          }}
+          className={`${styles.pencilLine} ${animatedStrokes ? styles.pencilStroke : ''}`}
+          style={animatedStrokes ? { animationDelay: '30ms' } : undefined}
           data-testid="ttt-pencil-v2"
         />
         {/* Horizontal line 1 (y ~ 100) */}
         <path
           d="M 8 100 C 95 99, 205 101, 292 99.5"
-          className={animatedStrokes ? styles.pencilStroke : undefined}
-          style={{
-            stroke: 'var(--ttt-pencil)',
-            strokeWidth: 4,
-            strokeLinecap: 'round',
-            fill: 'none',
-            animationDelay: animatedStrokes ? '60ms' : undefined,
-          }}
+          className={`${styles.pencilLine} ${animatedStrokes ? styles.pencilStroke : ''}`}
+          style={animatedStrokes ? { animationDelay: '60ms' } : undefined}
           data-testid="ttt-pencil-h1"
         />
         {/* Horizontal line 2 (y ~ 200) */}
         <path
           d="M 6 200 C 100 201, 200 199, 294 200.5"
-          className={animatedStrokes ? styles.pencilStroke : undefined}
-          style={{
-            stroke: 'var(--ttt-pencil)',
-            strokeWidth: 4,
-            strokeLinecap: 'round',
-            fill: 'none',
-            animationDelay: animatedStrokes ? '90ms' : undefined,
-          }}
+          className={`${styles.pencilLine} ${animatedStrokes ? styles.pencilStroke : ''}`}
+          style={animatedStrokes ? { animationDelay: '90ms' } : undefined}
           data-testid="ttt-pencil-h2"
         />
       </svg>

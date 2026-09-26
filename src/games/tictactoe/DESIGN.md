@@ -135,7 +135,7 @@ All tokens are defined under `.tttTokenScope` in [`src/games/tictactoe/ticTacToe
 | `--ttt-ink-muted` | `#5E6B69` | 5.29:1 | Secondary captions, helper instructions, and round counters (>= 4.5:1) |
 | `--ttt-host-ink` | `#155A96` | 6.81:1 | Host player X marks, series tally strokes, and accents; blue family (>= 4.5:1) |
 | `--ttt-guest-ink` | `#A8324E` | 6.19:1 | Guest player O marks, series tally strokes, and accents; red family (>= 4.5:1) |
-| `--ttt-rule` | `#A9B6B1` | 2.14:1 | Subtle border and card outline rule (>= 4.5:1 on dark) |
+| `--ttt-rule` | `#A9B6B1` | 2.14:1 | Subtle border and card outline rule (non-text; decorative) |
 | `--ttt-rule-soft` | `#DBE2DE` | 1.25:1 | Very soft inner divider line |
 | `--ttt-warning` | `#A85B16` | 4.79:1 | Turn timer amber warning (under 10s down to 4s) (>= 4.5:1) |
 | `--ttt-urgent` | `#B42335` | 6.19:1 | Turn countdown final 3 seconds, timeout warnings, destructive alerts (>= 4.5:1) |
@@ -214,7 +214,7 @@ All tokens are defined under `.tttTokenScope` in [`src/games/tictactoe/ticTacToe
 ## 5. Motion
 
 - **Keyframe Transitions:**
-  - `ttt-line-draw`: 240ms pencil draw-in for the four board grid strokes and winning strike-through.
+  - `ttt-line-draw`: stroke draw-in shared by the four board grid strokes (240ms) and the winning strike-through (220ms).
   - `ttt-mark-draw`: 180ms ink stroke draw-in for player marks.
   - `ttt-page-turn`: 360ms subtle page curl and slide transition when advancing rounds.
 - **Duration & Timing:**
@@ -276,4 +276,33 @@ Tic-Tac-Toe maps the shared entry contract tokens in `ticTacToeTokens.css`:
 ### Invariants Preserved
 - No Bingo tokens (`--bingo-*`) leaked into Tic-Tac-Toe.
 - Shared entry screens (`src/components/entry/`) use exclusively the `--entry-*` contract.
-- All colors meet WCAG AA (>= 4.5:1) contrast against their respective surfaces.
+- All text colors meet WCAG AA (>= 4.5:1) against their surfaces; rules and the margin line are decorative.
+
+---
+
+## 8. Do's and Don'ts
+
+### Do
+- **Do** keep the 3x3 board as the dominant square element on every screen.
+- **Do** draw marks using authentic SVG stroke paths with subtle jitter and round caps.
+- **Do** preserve the pale desaturated pink margin line distinct from Guest red ink.
+- **Do** record series scores as 5-bar gate tally marks in the left notebook margin.
+- **Do** ensure page-turn transitions complete within 400ms and support reduced-motion crossfade.
+
+### Don't
+- **Don't** use font glyphs (`X` / `O` text) to render board marks.
+- **Don't** swap Host blue and Guest red inks or use them as generic UI colors.
+- **Don't** darken the margin line to resemble player red ink.
+- **Don't** draw a heavy outer bounding box around the 3x3 board.
+- **Don't** use continuous spinning or pulsing animations during active play.
+
+---
+
+## 9. Screenshot References (Planned)
+
+Baseline visual captures planned at 390 x 844 viewport:
+- Static primitives isolation gallery: `tests/visual/baselines/ttt-primitives-gallery.png`
+- Active round with Host X and Guest O marks: `tests/visual/baselines/ttt-active-round.png`
+- Winning line strike-through overshooting ~6%: `tests/visual/baselines/ttt-winning-strike.png`
+- Margin score tally with target marker: `tests/visual/baselines/ttt-margin-tally.png`
+- Shared entry/lobby screens (Choice, Join Code, Stranger Search): planned in #16.

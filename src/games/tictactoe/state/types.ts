@@ -77,8 +77,11 @@ export interface TicTacToeMatchCoordinatorOptions {
   transport: import('@/core/transport/types').ITransport
   localPlayer: PlayerSummary
   remotePlayer: PlayerSummary
-  bestOf?: BestOfSeriesLength
-  startingPlayerId?: string
+  bestOf: BestOfSeriesLength
+  /** Who starts Round 1. Chosen by the Host and sent in match_start. */
+  startingPlayerId: string
+  /** Host-only: picks the Round 1 starter for a rematch. Defaults to a coin flip. */
+  pickStarter?: (players: [string, string]) => string
   turnDurationSeconds?: number
   enableAutoTurnTimer?: boolean
   onGameOver?: (result: WinResult) => void

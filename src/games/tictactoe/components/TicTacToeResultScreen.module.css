@@ -165,7 +165,7 @@
   border-radius: 8px;
   border: none;
   background-color: var(--ttt-host-ink);
-  color: #ffffff;
+  color: var(--ttt-paper-raised);
   font-family: var(--ttt-font-label);
   font-size: 0.875rem;
   font-weight: 700;

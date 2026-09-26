@@ -1,25 +1,26 @@
-'use client'
+"use client";
 
-import React, { useState } from 'react'
-import { ArrowLeft, AlertCircle } from 'lucide-react'
-import { TicTacToeMatchCoordinator } from '../state/TicTacToeMatchCoordinator'
-import { useTicTacToeMatch } from '../hooks/useTicTacToeMatch'
-import { NotebookSurface } from './NotebookSurface'
-import { TicTacToeBoardGrid } from './TicTacToeBoardGrid'
-import { TicTacToeMarginTally } from './TicTacToeMarginTally'
-import { TicTacToeTurnTimer } from './TicTacToeTurnTimer'
-import { TicTacToeReactionBar } from './TicTacToeReactionBar'
-import { TicTacToeReactionOverlay } from './TicTacToeReactionOverlay'
-import { TicTacToeBetweenRoundsOverlay } from './TicTacToeBetweenRoundsOverlay'
-import { TicTacToeResultScreen } from './TicTacToeResultScreen'
-import { cn } from '@/lib/utils'
-import styles from './TicTacToeMatchplay.module.css'
-import '../ticTacToeTokens.css'
+import React, { useState } from "react";
+import { ArrowLeft, AlertCircle } from "lucide-react";
+import { TicTacToeMatchCoordinator } from "../state/TicTacToeMatchCoordinator";
+import { useTicTacToeMatch } from "../hooks/useTicTacToeMatch";
+import { NotebookSurface } from "./NotebookSurface";
+import { TicTacToeBoardGrid } from "./TicTacToeBoardGrid";
+import { TicTacToePageTurn } from "./TicTacToePageTurn";
+import { TicTacToeMarginTally } from "./TicTacToeMarginTally";
+import { TicTacToeTurnTimer } from "./TicTacToeTurnTimer";
+import { TicTacToeReactionBar } from "./TicTacToeReactionBar";
+import { TicTacToeReactionOverlay } from "./TicTacToeReactionOverlay";
+import { TicTacToeBetweenRoundsOverlay } from "./TicTacToeBetweenRoundsOverlay";
+import { TicTacToeResultScreen } from "./TicTacToeResultScreen";
+import { cn } from "@/lib/utils";
+import styles from "./TicTacToeMatchplay.module.css";
+import "../ticTacToeTokens.css";
 
 export interface TicTacToeMatchplayProps {
-  coordinator: TicTacToeMatchCoordinator
-  onExit: () => void
-  className?: string
+  coordinator: TicTacToeMatchCoordinator;
+  onExit: () => void;
+  className?: string;
 }
 
 export const TicTacToeMatchplay: React.FC<TicTacToeMatchplayProps> = ({
@@ -37,9 +38,9 @@ export const TicTacToeMatchplay: React.FC<TicTacToeMatchplayProps> = ({
     requestRematch,
     acceptRematch,
     declineRematch,
-  } = useTicTacToeMatch(coordinator)
+  } = useTicTacToeMatch(coordinator);
 
-  const [showForfeitModal, setShowForfeitModal] = useState(false)
+  const [showForfeitModal, setShowForfeitModal] = useState(false);
 
   const {
     localPlayer,
@@ -57,27 +58,30 @@ export const TicTacToeMatchplay: React.FC<TicTacToeMatchplayProps> = ({
     reconnectSecondsRemaining,
     rematchState,
     winResult,
-  } = state
+  } = state;
 
-  const isGameOver = winResult.isGameOver
-  const currentRoundNum = seriesState.currentRoundNumber
+  const isGameOver = winResult.isGameOver;
+  const currentRoundNum = seriesState.currentRoundNumber;
 
-  const hostId = localPlayer.role === 'host' ? localPlayer.id : remotePlayer.id
-  const guestId = localPlayer.role === 'guest' ? localPlayer.id : remotePlayer.id
-  const hostScore = seriesState.scores[hostId] ?? 0
-  const guestScore = seriesState.scores[guestId] ?? 0
+  const hostId = localPlayer.role === "host" ? localPlayer.id : remotePlayer.id;
+  const guestId =
+    localPlayer.role === "guest" ? localPlayer.id : remotePlayer.id;
+  const hostScore = seriesState.scores[hostId] ?? 0;
+  const guestScore = seriesState.scores[guestId] ?? 0;
 
   const handleCellClick = (cellIndex: number) => {
-    if (!isMyTurn || isBetweenRounds || isGameOver || isReconnecting) return
-    submitMove(cellIndex)
-  }
+    if (!isMyTurn || isBetweenRounds || isGameOver || isReconnecting) return;
+    submitMove(cellIndex);
+  };
 
   const handleConfirmForfeit = () => {
-    setShowForfeitModal(false)
-    forfeit()
-  }
+    setShowForfeitModal(false);
+    forfeit();
+  };
 
-  const turnLabel = isMyTurn ? 'Your turn' : `Waiting for ${remotePlayer.name}...`
+  const turnLabel = isMyTurn
+    ? "Your turn"
+    : `Waiting for ${remotePlayer.name}...`;
 
   return (
     <div
@@ -89,10 +93,15 @@ export const TicTacToeMatchplay: React.FC<TicTacToeMatchplayProps> = ({
 
       {/* Disconnection Grace Banner */}
       {isReconnecting && (
-        <div className={styles.reconnectBanner} role="alert" data-testid="ttt-reconnect-banner">
+        <div
+          className={styles.reconnectBanner}
+          role="alert"
+          data-testid="ttt-reconnect-banner"
+        >
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>
-            Opponent disconnected. Reconnecting... ({reconnectSecondsRemaining}s grace)
+            Opponent disconnected. Reconnecting... ({reconnectSecondsRemaining}s
+            grace)
           </span>
         </div>
       )}
@@ -133,16 +142,22 @@ export const TicTacToeMatchplay: React.FC<TicTacToeMatchplayProps> = ({
             />
           }
         >
-          {/* Keyed by currentRoundNum so the board grid redraws cleanly each round */}
-          <TicTacToeBoardGrid
-            key={currentRoundNum}
-            roundNumber={currentRoundNum}
-            board={currentRoundState.board}
-            winningLine={currentRoundState.winningLine}
-            winnerInk={currentRoundState.winnerId === hostId ? 'host' : 'guest'}
-            onCellClick={handleCellClick}
-            disabled={!isMyTurn || isBetweenRounds || isGameOver || isReconnecting}
-          />
+          {/* Keyed by Round so the page turns and the grid redraws each Round */}
+          <TicTacToePageTurn roundKey={currentRoundNum}>
+            <TicTacToeBoardGrid
+              key={currentRoundNum}
+              roundNumber={currentRoundNum}
+              board={currentRoundState.board}
+              winningLine={currentRoundState.winningLine}
+              winnerInk={
+                currentRoundState.winnerId === hostId ? "host" : "guest"
+              }
+              onCellClick={handleCellClick}
+              disabled={
+                !isMyTurn || isBetweenRounds || isGameOver || isReconnecting
+              }
+            />
+          </TicTacToePageTurn>
         </NotebookSurface>
       </main>
 
@@ -221,5 +236,5 @@ export const TicTacToeMatchplay: React.FC<TicTacToeMatchplayProps> = ({
         </div>
       )}
     </div>
-  )
-}
+  );
+};

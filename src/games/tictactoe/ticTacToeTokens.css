@@ -69,7 +69,7 @@
   white-space: nowrap;
 }
 
-/* Stroke drawing keyframe for board pencil lines */
+/* Stroke drawing keyframe for board pencil lines and the winning strike-through */
 @keyframes ttt-line-draw {
   from {
     stroke-dashoffset: 1;
@@ -88,16 +88,6 @@
   100% {
     stroke-dashoffset: 0;
     opacity: 1;
-  }
-}
-
-/* Strike-through winning line animation */
-@keyframes ttt-strike-draw {
-  from {
-    stroke-dashoffset: 1;
-  }
-  to {
-    stroke-dashoffset: 0;
   }
 }
 

@@ -1,5 +1,4 @@
 import { GameDefinition, ValidationResult, WinResult } from '@/core/games/types'
-import { RoundStartMessagePayload } from '@/core/series/types'
 import {
   TicTacToeBoard,
   TicTacToeMark,
@@ -137,34 +136,6 @@ export function applyMove(state: TicTacToeState, move: TicTacToeMove): TicTacToe
     isDraw: Boolean(outcome.isDraw),
     winningLine: outcome.winningLine,
   }
-}
-
-/**
- * Deterministically resets the board for a new Round from the Host's message payload.
- * Validates message properties and ensures both peers land on identical state.
- */
-export function resetRoundFromHostMessage(
-  payload: RoundStartMessagePayload,
-  players: [string, string],
-  expectedRoundNumber?: number
-): TicTacToeState {
-  const [hostId, guestId] = players
-  if (!players.includes(payload.startingPlayerId)) {
-    throw new Error(`Invalid startingPlayerId: ${payload.startingPlayerId}`)
-  }
-  if (expectedRoundNumber !== undefined && payload.roundNumber !== expectedRoundNumber) {
-    throw new Error(
-      `Unexpected round number: expected ${expectedRoundNumber}, got ${payload.roundNumber}`
-    )
-  }
-  if (payload.roundNumber < 1) {
-    throw new Error(`Round number must be >= 1, got ${payload.roundNumber}`)
-  }
-  return initState({
-    hostId,
-    guestId,
-    startingPlayerId: payload.startingPlayerId,
-  })
 }
 
 /** Compact board signature (e.g. `X..O.....`) used for cross-peer sync assertions. */

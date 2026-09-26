@@ -4,7 +4,6 @@ import {
   checkWin,
   createEmptyBoard,
   initState,
-  resetRoundFromHostMessage,
   serializeBoard,
   ticTacToeDefinition,
   validateMove,
@@ -188,31 +187,5 @@ describe('ticTacToeDefinition (GameDefinition implementation)', () => {
     const outcome = ticTacToeDefinition.checkWin(state)
     expect(outcome.isGameOver).toBe(true)
     expect(outcome.winnerId).toBe(HOST)
-  })
-
-  it('resets new round deterministically from host payload with validation', () => {
-    const payload = {
-      roundNumber: 2,
-      startingPlayerId: GUEST,
-      timestamp: 123456789,
-    }
-    const state = resetRoundFromHostMessage(payload, [HOST, GUEST], 2)
-    expect(state.activePlayerId).toBe(GUEST)
-    expect(state.board).toEqual(Array(9).fill(null))
-    expect(state.marks[HOST]).toBe('X')
-    expect(state.marks[GUEST]).toBe('O')
-    expect(state.status).toBe('active')
-
-    // Rejects mismatched roundNumber
-    expect(() => resetRoundFromHostMessage(payload, [HOST, GUEST], 3)).toThrow(
-      'Unexpected round number'
-    )
-    // Rejects invalid startingPlayerId
-    expect(() =>
-      resetRoundFromHostMessage(
-        { roundNumber: 2, startingPlayerId: 'stranger', timestamp: 123 },
-        [HOST, GUEST]
-      )
-    ).toThrow('Invalid startingPlayerId')
   })
 })

@@ -20,7 +20,10 @@ describe('TicTacToeMatchCoordinator', () => {
     localStorage.clear()
   })
 
-  function setupCoordinators(bestOf: 1 | 3 | 5 = 3) {
+  function setupCoordinators(
+    bestOf: 1 | 3 | 5 = 3,
+    pickStarter: (players: [string, string]) => string = (players) => players[0]
+  ) {
     const [hostTransport, guestTransport] = createLoopbackTransportPair()
     hostTransport.connect()
     guestTransport.connect()
@@ -31,6 +34,7 @@ describe('TicTacToeMatchCoordinator', () => {
       remotePlayer: { id: guestTransport.localPlayerId, name: 'Swift Otter', role: 'guest' },
       bestOf,
       startingPlayerId: hostTransport.localPlayerId,
+      pickStarter,
     })
 
     const guestCoordinator = new TicTacToeMatchCoordinator({
@@ -129,6 +133,22 @@ describe('TicTacToeMatchCoordinator', () => {
       expect(hostCoordinator.snapshot.currentRoundState.board).toEqual(Array(9).fill(null))
       expect(hostCoordinator.snapshot.turnSecondsRemaining).toBe(15)
       expect(guestCoordinator.snapshot.turnSecondsRemaining).toBe(15)
+    })
+  })
+
+  describe('Host enforces turn expiry', () => {
+    it('passes a stalled Guest turn once it is overdue on the Host clock', () => {
+      const { hostCoordinator, guestCoordinator, guestTransport } = setupCoordinators(3)
+      hostCoordinator.submitMove(0)
+      expect(guestCoordinator.isMyTurn).toBe(true)
+
+      // Simulate a stalled Guest client: its own timer never passes the turn
+      guestCoordinator.destroy()
+      vi.advanceTimersByTime((DEFAULT_TURN_DURATION_SECONDS + 3) * 1000)
+
+      expect(hostCoordinator.isMyTurn).toBe(true)
+      expect(hostCoordinator.snapshot.currentRoundMoves.at(-1)).toMatchObject({ type: 'pass' })
+      expect(guestTransport.status).toBe('connected')
     })
   })
 
@@ -292,6 +312,26 @@ describe('TicTacToeMatchCoordinator', () => {
       expect(hostCoordinator.snapshot.seriesState.scores[hostId]).toBe(0)
       expect(hostCoordinator.isMyTurn).toBe(true)
     })
+
+    it('rematch uses the starter the Host picked, on both peers', () => {
+      const { hostCoordinator, guestCoordinator, guestId } = setupCoordinators(1, (players) => players[1])
+
+      hostCoordinator.submitMove(0)
+      guestCoordinator.submitMove(3)
+      hostCoordinator.submitMove(1)
+      guestCoordinator.submitMove(4)
+      hostCoordinator.submitMove(2)
+      expect(guestCoordinator.snapshot.status).toBe('completed')
+
+      guestCoordinator.requestRematch()
+      hostCoordinator.acceptRematch()
+
+      expect(hostCoordinator.snapshot.status).toBe('active')
+      expect(guestCoordinator.snapshot.status).toBe('active')
+      expect(hostCoordinator.snapshot.seriesState.round1StarterId).toBe(guestId)
+      expect(guestCoordinator.snapshot.seriesState.round1StarterId).toBe(guestId)
+      expect(guestCoordinator.isMyTurn).toBe(true)
+    })
   })
 
   describe('forfeit and disconnection grace', () => {
@@ -309,8 +349,8 @@ describe('TicTacToeMatchCoordinator', () => {
       expect(guestCoordinator.snapshot.winResult.reason).toBe('forfeit')
     })
 
-    it('awards match to remaining peer if disconnected peer exceeds 30s grace', () => {
-      const { hostCoordinator, guestCoordinator, guestTransport, hostId } = setupCoordinators(3)
+    it('ends with no winner when a dropped link is not restored within 30s grace', () => {
+      const { hostCoordinator, guestTransport } = setupCoordinators(3)
 
       // Guest drops
       guestTransport.disconnect()
@@ -321,10 +361,99 @@ describe('TicTacToeMatchCoordinator', () => {
       // Advance 30 seconds
       vi.advanceTimersByTime(30000)
 
-      // Host wins by forfeit!
+      // Neither side can prove who left, so nobody is awarded the win
       expect(hostCoordinator.snapshot.status).toBe('completed')
-      expect(hostCoordinator.snapshot.winResult.winnerId).toBe(hostId)
-      expect(hostCoordinator.snapshot.winResult.reason).toBe('forfeit')
+      expect(hostCoordinator.snapshot.winResult.winnerId).toBeNull()
+      expect(hostCoordinator.snapshot.winResult.reason).toBe('disconnect')
+    })
+
+    it('does not let either peer award itself the win when its own link drops', () => {
+      const { hostCoordinator, guestCoordinator, guestTransport } = setupCoordinators(3)
+      guestTransport.disconnect()
+      vi.advanceTimersByTime(30000)
+      expect(hostCoordinator.snapshot.winResult.winnerId).toBeNull()
+      expect(guestCoordinator.snapshot.winResult.winnerId).toBeNull()
+    })
+  })
+
+  describe('message authority (ADR 0003)', () => {
+    it('Host ignores round_start and sync sent by the Guest', () => {
+      const { hostCoordinator, guestTransport, guestId } = setupCoordinators(3)
+      const before = JSON.stringify(hostCoordinator.snapshot.seriesState)
+
+      guestTransport.send({
+        type: 'round_start',
+        payload: { roundNumber: 2, startingPlayerId: guestId, timestamp: 1 },
+      })
+      guestTransport.send({
+        type: 'sync',
+        payload: {
+          state: {
+            ...hostCoordinator.snapshot,
+            seriesState: { ...hostCoordinator.snapshot.seriesState, scores: { [guestId]: 9 } },
+          },
+          timestamp: 1,
+        },
+      })
+
+      expect(JSON.stringify(hostCoordinator.snapshot.seriesState)).toBe(before)
+      expect(hostCoordinator.snapshot.currentRoundMoves).toHaveLength(0)
+    })
+
+    it('Guest rejects a sync that belongs to another Match or rewinds this one', () => {
+      const { hostCoordinator, guestCoordinator, hostTransport } = setupCoordinators(3)
+      hostCoordinator.submitMove(0)
+      const snapshot = hostCoordinator.snapshot
+
+      hostTransport.send({
+        type: 'sync',
+        payload: {
+          state: {
+            ...snapshot,
+            seriesState: { ...snapshot.seriesState, players: ['someone', 'else'] },
+          },
+          timestamp: 1,
+        },
+      })
+      hostTransport.send({
+        type: 'sync',
+        payload: { state: { ...snapshot, seriesState: { ...snapshot.seriesState, bestOf: 5 } }, timestamp: 1 },
+      })
+
+      expect(guestCoordinator.snapshot.seriesState.bestOf).toBe(3)
+      expect(guestCoordinator.snapshot.currentRoundState.board[0]).toBe('X')
+    })
+
+    it('ignores forfeit, rematch and reactions that name the wrong player', () => {
+      const { hostCoordinator, guestTransport, hostId } = setupCoordinators(3)
+      const reactions: string[] = []
+      hostCoordinator.onReaction((r) => reactions.push(r.emoji))
+
+      guestTransport.send({ type: 'forfeit', payload: { playerId: hostId } })
+      guestTransport.send({ type: 'reaction', payload: { emoji: '👍', playerId: hostId, timestamp: 1 } })
+
+      expect(hostCoordinator.snapshot.status).toBe('active')
+      expect(reactions).toHaveLength(0)
+    })
+  })
+
+  describe('reconnect sync', () => {
+    it('Guest asks the Host for its state after reconnecting', () => {
+      const { hostTransport, guestTransport } = setupCoordinators(3)
+      const hostSeen: string[] = []
+      hostTransport.onMessage((m) => hostSeen.push(m.type))
+
+      guestTransport.disconnect()
+      guestTransport.connect()
+
+      expect(hostSeen).toContain('sync')
+    })
+
+    it('keys the cached Match by its players', () => {
+      const { hostCoordinator, hostId, guestId } = setupCoordinators(3)
+      expect(hostCoordinator.matchId).toBe(`${hostId}:${guestId}`)
+      expect(TicTacToeMatchCoordinator.getCachedMatch(`${hostId}:${guestId}`)).not.toBeNull()
+      expect(TicTacToeMatchCoordinator.getCachedMatch('other:match')).toBeNull()
     })
   })
 

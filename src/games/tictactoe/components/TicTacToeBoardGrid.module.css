@@ -74,3 +74,10 @@
 .cellButton:disabled {
   cursor: default;
 }
+
+.pencilLine {
+  stroke: var(--ttt-pencil);
+  stroke-width: 4;
+  stroke-linecap: round;
+  fill: none;
+}

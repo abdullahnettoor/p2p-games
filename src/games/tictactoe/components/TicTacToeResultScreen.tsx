@@ -39,8 +39,9 @@ export const TicTacToeResultScreen: React.FC<TicTacToeResultScreenProps> = ({
   const isLoser = winResult.winnerId === remotePlayer.id
   const isDraw = winResult.isDraw || (!isWinner && !isLoser && !winResult.winnerId)
   const isForfeit = winResult.reason === 'forfeit'
+  const isAbandoned = winResult.reason === 'disconnect'
 
-  let headline = 'Drawn Match'
+  let headline = isAbandoned ? 'Match ended: connection lost' : 'Drawn match'
   let headlineClass = ''
 
   if (isWinner) {
@@ -157,7 +158,7 @@ export const TicTacToeResultScreen: React.FC<TicTacToeResultScreenProps> = ({
             onClick={onExit}
             data-testid="ttt-exit-catalog-btn"
           >
-            Exit to Games
+            Exit to Catalog
           </button>
         </div>
       </div>

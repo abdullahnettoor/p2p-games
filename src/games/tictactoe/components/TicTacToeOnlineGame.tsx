@@ -173,7 +173,8 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
           TicTacToeMatchCoordinator.clearCachedMatch()
           matchCoordinator.destroy()
           setMatchCoordinator(null)
-          handleBackToChoice()
+          // Leaving a Match returns to the Catalog; unmounting tears down the lobby.
+          handleExitFlow()
         }}
       />
     )

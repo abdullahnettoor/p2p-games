@@ -21,6 +21,14 @@
   fill: none;
 }
 
+.hostInk {
+  stroke: var(--ttt-host-ink);
+}
+
+.guestInk {
+  stroke: var(--ttt-guest-ink);
+}
+
 .hostMarkPath {
   stroke: var(--ttt-host-ink);
   stroke-dasharray: 120;

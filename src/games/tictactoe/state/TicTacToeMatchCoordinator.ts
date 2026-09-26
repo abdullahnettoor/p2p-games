@@ -14,15 +14,12 @@ import {
 import {
   applyMove,
   initState,
-  resetRoundFromHostMessage,
-  ticTacToeDefinition,
   validateMove,
 } from '../engine'
-import { TicTacToeMove, TicTacToeState } from '../types'
+import { TicTacToeMove } from '../types'
 import {
   CachedTicTacToeMatch,
   PlayerSummary,
-  RematchState,
   TICTACTOE_ACTIVE_MATCH_STORAGE_KEY,
   TicTacToeCoordinatorState,
   TicTacToeMatchCoordinatorOptions,
@@ -34,6 +31,12 @@ import {
 export const DEFAULT_TURN_DURATION_SECONDS = 15
 export const DEFAULT_BETWEEN_ROUNDS_SECONDS = 3
 export const DEFAULT_RECONNECT_GRACE_SECONDS = 30
+/** Extra seconds the Host waits after the Guest's turn hits 0 before passing it for them. */
+export const HOST_TIMEOUT_ENFORCE_DELAY_SECONDS = 2
+
+/** Picks who starts Round 1 of a Match. Only the Host calls this; the Guest uses the Host's pick. */
+export type PickStarter = (players: [string, string]) => string
+const defaultPickStarter: PickStarter = (players) => players[Math.random() < 0.5 ? 0 : 1]
 
 export class TicTacToeMatchCoordinator {
   private transport: ITransport
@@ -41,6 +44,8 @@ export class TicTacToeMatchCoordinator {
   private enableAutoTurnTimer: boolean
   private onGameOver?: (result: WinResult) => void
   private onRematch?: () => void
+  private pickStarter: PickStarter
+  private hostOverdueSeconds = 0
 
   private state: TicTacToeCoordinatorState
 
@@ -53,11 +58,14 @@ export class TicTacToeMatchCoordinator {
 
   private unsubscribers: Array<() => void> = []
 
-  public static getCachedMatch(): CachedTicTacToeMatch | null {
+  /** Returns the cached Match only if it belongs to `matchId` (ADR 0005). */
+  public static getCachedMatch(matchId: string): CachedTicTacToeMatch | null {
     if (typeof window === 'undefined' || !window.localStorage) return null
     try {
       const raw = localStorage.getItem(TICTACTOE_ACTIVE_MATCH_STORAGE_KEY)
-      return raw ? JSON.parse(raw) : null
+      if (!raw) return null
+      const cached = JSON.parse(raw) as CachedTicTacToeMatch
+      return cached.matchId === matchId ? cached : null
     } catch {
       return null
     }
@@ -78,13 +86,17 @@ export class TicTacToeMatchCoordinator {
     this.enableAutoTurnTimer = options.enableAutoTurnTimer ?? true
     this.onGameOver = options.onGameOver
     this.onRematch = options.onRematch
+    this.pickStarter = options.pickStarter ?? defaultPickStarter
 
-    const { localPlayer, remotePlayer, bestOf = 3, startingPlayerId } = options
+    const { localPlayer, remotePlayer, bestOf, startingPlayerId } = options
     const hostId = localPlayer.role === 'host' ? localPlayer.id : remotePlayer.id
     const guestId = localPlayer.role === 'guest' ? localPlayer.id : remotePlayer.id
     const players: [string, string] = [hostId, guestId]
 
-    const round1Starter = startingPlayerId ?? hostId
+    if (startingPlayerId !== hostId && startingPlayerId !== guestId) {
+      throw new Error('startingPlayerId must be the Host or the Guest')
+    }
+    const round1Starter = startingPlayerId
 
     const seriesState = createSeries({
       bestOf,
@@ -164,6 +176,12 @@ export class TicTacToeMatchCoordinator {
     this.reactionListeners.forEach((l) => l(reaction))
   }
 
+  /** Stable id for this Match: the Host's peer id plus the Guest's. */
+  public get matchId(): string {
+    const [hostId, guestId] = this.state.seriesState.players
+    return `${hostId}:${guestId}`
+  }
+
   private persistActiveMatch(): void {
     if (typeof window === 'undefined' || !window.localStorage) return
     if (this.state.status !== 'active') {
@@ -173,7 +191,7 @@ export class TicTacToeMatchCoordinator {
 
     try {
       const cached: CachedTicTacToeMatch = {
-        matchId: (this.transport as { getMatchId?: () => string }).getMatchId?.() ?? 'tictactoe-active-match',
+        matchId: this.matchId,
         localPlayer: this.state.localPlayer,
         remotePlayer: this.state.remotePlayer,
         bestOf: this.state.seriesState.bestOf,
@@ -222,6 +240,8 @@ export class TicTacToeMatchCoordinator {
 
     if (this.transport.onStatusChange) {
       const unsubStatus = this.transport.onStatusChange((status) => {
+        // A dropped link looks the same from both ends, so this only pauses
+        // play; it never decides who left.
         if (status === 'disconnected' || status === 'reconnecting' || status === 'closed') {
           this.handleRemoteDisconnect()
         } else if (status === 'connected') {
@@ -232,25 +252,38 @@ export class TicTacToeMatchCoordinator {
     }
   }
 
+  private isFromRemote(playerId: unknown): boolean {
+    return playerId === this.state.remotePlayer.id
+  }
+
   private handleTransportMessage(msg: TransportMessage): void {
     switch (msg.type) {
       case 'move': {
         const payload = msg.payload as {
           move: TicTacToeMove
           playerId: string
-          timestamp: number
+          forcedTimeout?: boolean
         }
-        if (payload?.move && payload.playerId === this.state.remotePlayer.id) {
+        if (!payload?.move) break
+        if (this.isFromRemote(payload.playerId) && payload.move.playerId === payload.playerId) {
+          this.applyIncomingMove(payload.move)
+        } else if (
+          // The Host may pass the Guest's turn once it has timed out on the Host's clock.
+          !this.isHost &&
+          payload.forcedTimeout === true &&
+          payload.move.type === 'pass' &&
+          payload.move.playerId === this.state.localPlayer.id
+        ) {
           this.applyIncomingMove(payload.move)
         }
         break
       }
 
       case 'round_start': {
+        // Only the Host starts Rounds (ADR 0003).
+        if (this.isHost) break
         const payload = msg.payload as RoundStartMessagePayload
-        if (payload) {
-          this.handleIncomingRoundStart(payload)
-        }
+        if (payload) this.handleIncomingRoundStart(payload)
         break
       }
 
@@ -260,36 +293,33 @@ export class TicTacToeMatchCoordinator {
       }
 
       case 'reaction': {
-        const payload = msg.payload as {
-          emoji: string
-          playerId: string
-          timestamp: number
-        }
-        if (payload?.emoji) {
-          const reaction: TicTacToeReaction = {
+        const payload = msg.payload as { emoji: string; playerId: string; timestamp: number }
+        if (payload?.emoji && this.isFromRemote(payload.playerId)) {
+          this.notifyReaction({
             id: `rx_${payload.timestamp}_${Math.random().toString(36).substring(2, 6)}`,
             emoji: payload.emoji,
             playerId: payload.playerId,
             timestamp: payload.timestamp,
-          }
-          this.notifyReaction(reaction)
+          })
         }
         break
       }
 
       case 'forfeit': {
-        this.handleRemoteForfeit()
+        const payload = msg.payload as { playerId: string }
+        if (this.isFromRemote(payload?.playerId)) this.handleRemoteForfeit()
         break
       }
 
-      case 'forfeit_ack': {
-        // Ack received for local forfeit
+      case 'forfeit_ack':
         break
-      }
 
       case 'sync': {
-        const payload = msg.payload as { state: TicTacToeSyncState; timestamp: number }
-        if (payload?.state) {
+        const payload = msg.payload as { state?: TicTacToeSyncState; request?: boolean }
+        if (this.isHost) {
+          // The Guest asks for the Host's state after reconnecting.
+          if (payload?.request) this.sendSyncState()
+        } else if (payload?.state) {
           this.applySyncState(payload.state)
         }
         break
@@ -297,9 +327,7 @@ export class TicTacToeMatchCoordinator {
 
       case 'rematch': {
         const payload = msg.payload as RematchMessagePayload
-        if (payload) {
-          this.handleRematchMessage(payload)
-        }
+        if (payload && this.isFromRemote(payload.playerId)) this.handleRematchMessage(payload)
         break
       }
     }
@@ -414,12 +442,44 @@ export class TicTacToeMatchCoordinator {
         this.notify()
         if (this.isMyTurn) {
           this.submitPass()
+        } else if (this.isHost) {
+          // If the Guest's client stalls, the Host passes the turn for them.
+          this.hostOverdueSeconds += 1
+          if (this.hostOverdueSeconds >= HOST_TIMEOUT_ENFORCE_DELAY_SECONDS) {
+            this.hostForceGuestPass()
+          }
         }
       }
     }, 1000)
   }
 
+  private hostForceGuestPass(): void {
+    if (!this.isHost || this.state.status !== 'active' || this.state.isBetweenRounds) return
+    const guestId = this.state.remotePlayer.id
+    if (this.state.currentRoundState.activePlayerId !== guestId) return
+
+    const move: TicTacToeMove = { type: 'pass', playerId: guestId }
+    if (!validateMove(this.state.currentRoundState, move).valid) return
+
+    this.state.currentRoundState = applyMove(this.state.currentRoundState, move)
+    this.state.currentRoundMoves.push(move)
+    this.safeSend({
+      type: 'move',
+      payload: { move, playerId: this.state.localPlayer.id, forcedTimeout: true, timestamp: Date.now() },
+    })
+    this.onMoveApplied()
+  }
+
+  private safeSend(message: TransportMessage): void {
+    try {
+      this.transport.send(message)
+    } catch (err) {
+      console.warn('[TicTacToeMatchCoordinator] send failed:', err)
+    }
+  }
+
   private resetTurnTimer(): void {
+    this.hostOverdueSeconds = 0
     this.state.turnSecondsRemaining = this.turnDurationSeconds
     this.startTurnTimer()
   }
@@ -573,6 +633,19 @@ export class TicTacToeMatchCoordinator {
   }
 
   private handleIncomingRoundStart(payload: RoundStartMessagePayload): void {
+    // Round 1 of a rematch: the Host's pick decides who starts.
+    if (this.state.status === 'completed') {
+      const [hostId, guestId] = this.state.seriesState.players
+      if (
+        this.state.rematchState === 'accepted' &&
+        payload.roundNumber === 1 &&
+        (payload.startingPlayerId === hostId || payload.startingPlayerId === guestId)
+      ) {
+        this.startNewMatch(payload.startingPlayerId)
+      }
+      return
+    }
+
     const validation = validateRoundStartMessage(
       this.state.seriesState,
       payload
@@ -694,15 +767,17 @@ export class TicTacToeMatchCoordinator {
         this.state.reconnectSecondsRemaining -= 1
         this.notify()
       } else {
-        // Grace period expired: disconnected player forfeits match
+        // Grace expired. A dropped link looks the same from both ends, so
+        // neither peer can prove who left: end the Match with no winner
+        // rather than let each side award itself the win.
         this.state.reconnectSecondsRemaining = 0
         this.stopReconnectGraceTimer()
 
         this.finishMatch({
           isGameOver: true,
-          winnerId: this.state.localPlayer.id,
+          winnerId: null,
           isDraw: false,
-          reason: 'forfeit',
+          reason: 'disconnect',
         })
       }
     }, 1000)
@@ -723,12 +798,14 @@ export class TicTacToeMatchCoordinator {
     this.state.isHostWaitingInGrace = false
     this.notify()
 
-    // Host sends authoritative sync state to reconnected peer
+    // Host sends its state; the Guest also asks, in case the Host's push was missed.
     if (this.isHost) {
       this.sendSyncState()
       if (this.state.isBetweenRounds) {
         this.attemptStartNextRound()
       }
+    } else {
+      this.safeSend({ type: 'sync', payload: { request: true, state: null, timestamp: Date.now() } })
     }
   }
 
@@ -746,7 +823,7 @@ export class TicTacToeMatchCoordinator {
       remoteReadyNextRound: this.state.remoteReadyNextRound,
     }
 
-    this.transport.send({
+    this.safeSend({
       type: 'sync',
       payload: {
         state: sync,
@@ -755,7 +832,28 @@ export class TicTacToeMatchCoordinator {
     })
   }
 
+  /** Rejects a sync that doesn't belong to this Match or would rewind it. */
+  private isValidSync(sync: TicTacToeSyncState): boolean {
+    const local = this.state.seriesState
+    const remote = sync?.seriesState
+    if (!remote || !sync.currentRoundState) return false
+    if (remote.bestOf !== local.bestOf) return false
+    if (remote.players?.[0] !== local.players[0] || remote.players?.[1] !== local.players[1]) return false
+    if (!Array.isArray(remote.rounds) || remote.rounds.length < local.rounds.length) return false
+    if (remote.rounds.length > remote.bestOf) return false
+    if (!Array.isArray(sync.roundRecords) || sync.roundRecords.length !== remote.rounds.length) return false
+    const [hostId, guestId] = local.players
+    const marks = sync.currentRoundState.marks
+    if (marks?.[hostId] !== 'X' || marks?.[guestId] !== 'O') return false
+    if (!Array.isArray(sync.currentRoundState.board) || sync.currentRoundState.board.length !== 9) return false
+    return true
+  }
+
   public applySyncState(sync: TicTacToeSyncState): void {
+    if (!this.isValidSync(sync)) {
+      console.warn('[TicTacToeMatchCoordinator] Rejected invalid sync state')
+      return
+    }
     this.state.seriesState = sync.seriesState
     this.state.currentRoundState = sync.currentRoundState
     this.state.currentRoundMoves = sync.currentRoundMoves
@@ -842,7 +940,7 @@ export class TicTacToeMatchCoordinator {
       },
     })
 
-    this.startNewMatch()
+    this.onRematchAgreed()
   }
 
   public declineRematch(): void {
@@ -863,14 +961,16 @@ export class TicTacToeMatchCoordinator {
   private handleRematchMessage(payload: RematchMessagePayload): void {
     switch (payload.rematchIntent) {
       case 'request': {
+        if (this.state.status !== 'completed') break
         this.state.rematchState = 'received'
         this.notify()
         break
       }
       case 'accept': {
+        if (this.state.rematchState !== 'requested') break
         this.state.rematchState = 'accepted'
         this.notify()
-        this.startNewMatch()
+        this.onRematchAgreed()
         break
       }
       case 'decline': {
@@ -881,7 +981,21 @@ export class TicTacToeMatchCoordinator {
     }
   }
 
-  private startNewMatch(): void {
+  /**
+   * Both players agreed to a rematch. The Host picks who starts Round 1 and
+   * sends it as round_start #1; the Guest waits for that message.
+   */
+  private onRematchAgreed(): void {
+    if (!this.isHost) return
+    const starter = this.pickStarter(this.state.seriesState.players)
+    this.safeSend({
+      type: 'round_start',
+      payload: { roundNumber: 1, startingPlayerId: starter, timestamp: Date.now() },
+    })
+    this.startNewMatch(starter)
+  }
+
+  private startNewMatch(round1StarterId: string): void {
     this.stopTurnTimer()
     this.stopBetweenRoundsTimer()
     this.stopReconnectGraceTimer()
@@ -893,13 +1007,13 @@ export class TicTacToeMatchCoordinator {
     const newSeries = createSeries({
       bestOf: this.state.seriesState.bestOf,
       players,
-      round1StarterId: hostId,
+      round1StarterId,
     })
 
     const initialRoundState = initState({
       hostId,
       guestId,
-      startingPlayerId: hostId,
+      startingPlayerId: round1StarterId,
     })
 
     this.state = {

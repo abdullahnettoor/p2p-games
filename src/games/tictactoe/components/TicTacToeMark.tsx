@@ -63,25 +63,13 @@ export const TicTacToeMark: React.FC<TicTacToeMarkProps> = ({
             {/* Host Mark Stroke 1: top-left to bottom-right */}
             <path
               d="M 22 20 C 32 36, 62 64, 78 80"
-              className={animated ? styles.hostMarkPath : undefined}
-              style={{
-                stroke: 'var(--ttt-host-ink)',
-                strokeWidth: 8,
-                strokeLinecap: 'round',
-                fill: 'none',
-              }}
+              className={`${styles.markPath} ${styles.hostInk} ${animated ? styles.hostMarkPath : ''}`}
             />
             {/* Host Mark Stroke 2: top-right to bottom-left */}
             <path
               d="M 78 22 C 64 38, 34 64, 20 78"
-              className={animated ? styles.hostMarkPath : undefined}
-              style={{
-                stroke: 'var(--ttt-host-ink)',
-                strokeWidth: 8,
-                strokeLinecap: 'round',
-                fill: 'none',
-                animationDelay: animated ? '40ms' : undefined,
-              }}
+              className={`${styles.markPath} ${styles.hostInk} ${animated ? styles.hostMarkPath : ''}`}
+              style={animated ? { animationDelay: '40ms' } : undefined}
             />
           </g>
         ) : (
@@ -89,13 +77,7 @@ export const TicTacToeMark: React.FC<TicTacToeMarkProps> = ({
             {/* Guest Mark: single continuous looped stroke with ~8% overlap tail */}
             <path
               d="M 72 28 C 48 16, 24 28, 22 52 C 20 74, 38 84, 52 84 C 72 84, 82 68, 80 44 C 78 28, 66 22, 58 22"
-              className={animated ? styles.guestMarkPath : undefined}
-              style={{
-                stroke: 'var(--ttt-guest-ink)',
-                strokeWidth: 8,
-                strokeLinecap: 'round',
-                fill: 'none',
-              }}
+              className={`${styles.markPath} ${styles.guestInk} ${animated ? styles.guestMarkPath : ''}`}
             />
           </g>
         )}

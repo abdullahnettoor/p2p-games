@@ -10,7 +10,7 @@ import {
   isValidSeriesLength,
 } from './series'
 import { formatSeriesScore } from '@/games/tictactoe/seriesScore'
-import { resetRoundFromHostMessage } from '@/games/tictactoe/engine'
+import { initState } from '@/games/tictactoe/engine'
 
 const HOST = 'player-host'
 const GUEST = 'player-guest'
@@ -323,8 +323,10 @@ describe('Series logic', () => {
       expect(validateRoundStartMessage(series, hostPayload).valid).toBe(true)
 
       // Host and Guest independently reset their Tic-Tac-Toe round from hostPayload
-      const hostRoundState = resetRoundFromHostMessage(hostPayload, PLAYERS, 2)
-      const guestRoundState = resetRoundFromHostMessage(hostPayload, PLAYERS, 2)
+      const reset = () =>
+        initState({ hostId: HOST, guestId: GUEST, startingPlayerId: hostPayload.startingPlayerId })
+      const hostRoundState = reset()
+      const guestRoundState = reset()
 
       // Deterministic identical state
       expect(hostRoundState).toEqual(guestRoundState)
