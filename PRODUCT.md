@@ -37,9 +37,13 @@ A Host creates a Match and shares its invite link through an external messaging 
 
 BINGO should feel like a familiar, polished mobile game expressed as a physical scorecard: restrained paper material, legible printed information, hand-drawn marks, two automatically assigned Player inks, and short tactile feedback. The material treatment must not make controls unfamiliar or reduce board clarity.
 
+All Games must comply with the [Shared Game Design Rules](docs/design/GAME-DESIGN-RULES.md), which define core accessibility, Host (blue) / Guest (red) ink invariants, motion, and viewport constraints.
+
 ## Evidence on Hand
 
 - Product and BINGO requirements: `.scratch/p2p-bingo-game/spec.md`
+- Shared Game Design Rules: `docs/design/GAME-DESIGN-RULES.md`
+- Per-game DESIGN.md Template: `docs/design/DESIGN-TEMPLATE.md`
 - Existing BINGO implementation: `src/games/bingo/`
 - Existing domain language: `CONTEXT.md`
 - There are no confirmed customer claims, testimonials, performance benchmarks, or bespoke visual assets.
@@ -51,7 +55,8 @@ BINGO should feel like a familiar, polished mobile game expressed as a physical 
 - Keep game rules deterministic and communication peer-to-peer.
 - Favor short, purposeful feedback over distracting or continuous effects.
 - Preserve legibility and operability while giving each Game room for its own character.
+- Adhere to the platform design rules (Host blue / Guest red, text contrast ≥ 4.5:1, 44px targets, viewport contract).
 
 ## Accessibility & Inclusion
 
-The interface must support touch, keyboard, assistive technology, reduced-motion preferences, and readable layouts at narrow mobile widths and enlarged text sizes.
+The interface must support touch, keyboard, assistive technology, reduced-motion preferences, and readable layouts at narrow mobile widths and enlarged text sizes, adhering to the standards outlined in [Shared Game Design Rules](docs/design/GAME-DESIGN-RULES.md).
