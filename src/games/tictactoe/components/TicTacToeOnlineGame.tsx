@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { LobbyCoordinator } from '@/core/lobby/LobbyCoordinator'
 import { MatchStartEvent } from '@/core/lobby/types'
+import { createResumeTransport, isResumable } from '@/core/lobby/resume'
 import { PeerJSTransport } from '@/core/transport/PeerJSTransport'
 import { ITransport } from '@/core/transport/types'
 import {
@@ -54,6 +55,31 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
       activeRef.current = false
     }
   }, [])
+
+  // After a reload, a recent friend Match in the cache is resumed instead of
+  // showing the entry screens (ADR 0005).
+  const [resumeCache] = useState(() => {
+    const cached = TicTacToeMatchCoordinator.peekCachedMatch()
+    return isResumable(cached) ? cached : null
+  })
+  const resumeTransportRef = useRef<ITransport | null>(null)
+
+  useEffect(() => {
+    if (!resumeCache) return
+    const transport = createResumeTransport(resumeCache)
+    resumeTransportRef.current = transport
+    const match = new TicTacToeMatchCoordinator(
+      TicTacToeMatchCoordinator.resumeOptions(resumeCache, transport)
+    )
+    setMatchCoordinator(match)
+    // If this fails, the reconnect grace runs out and the Match ends.
+    transport.connect().catch((err) => console.warn('[TicTacToe] resume connect failed:', err))
+    return () => {
+      match.destroy()
+      transport.disconnect()
+      resumeTransportRef.current = null
+    }
+  }, [resumeCache])
 
   // Turn a lobby's match_start into a live Match. The Series length and the
   // first starter come from the Host's match_start, so both peers agree.
@@ -151,9 +177,10 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
     gameId: 'tictactoe',
     createFriendLobby,
     createStrangerLobby,
-    initialAction,
-    initialRoomCode,
-    initialMatchId,
+    // Explicit nulls stop the entry flow reading ?room=/?match= while resuming.
+    initialAction: resumeCache ? null : initialAction,
+    initialRoomCode: resumeCache ? null : initialRoomCode,
+    initialMatchId: resumeCache ? null : initialMatchId,
   })
 
   const handleExitFlow = () => {
@@ -172,11 +199,21 @@ export const TicTacToeOnlineGame: React.FC<TicTacToeOnlineGameProps> = ({
         onExit={() => {
           TicTacToeMatchCoordinator.clearCachedMatch()
           matchCoordinator.destroy()
+          resumeTransportRef.current?.disconnect()
           setMatchCoordinator(null)
           // Leaving a Match returns to the Catalog; unmounting tears down the lobby.
           handleExitFlow()
         }}
       />
+    )
+  }
+
+  // Resuming after a reload: the coordinator is created in an effect
+  if (resumeCache) {
+    return (
+      <div className="tttTokenScope" role="status" data-testid="ttt-resuming">
+        Reconnecting to your match…
+      </div>
     )
   }
 

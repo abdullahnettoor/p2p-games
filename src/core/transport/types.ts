@@ -99,5 +99,7 @@ export interface ITransport<TMessage = TransportMessage> {
   onError(handler: ErrorEventHandler): () => void
   onSignalingChange?: (handler: SignalingChangeHandler) => () => void
   releaseSignaling?: () => void
+  /** Guest only: redial the Host after a drop while a Match is live. */
+  setAutoRedial?: (enabled: boolean) => void
   disconnect(): void
 }

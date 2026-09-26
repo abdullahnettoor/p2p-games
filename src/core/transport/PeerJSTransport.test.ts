@@ -16,6 +16,7 @@ class MockDataConnection extends EventEmitter {
 }
 
 class MockPeer extends EventEmitter {
+  static reclaimSeen = new Set<string>()
   public id: string
   public disconnected = false
   public destroyed = false
@@ -27,7 +28,12 @@ class MockPeer extends EventEmitter {
         ? idOrOptions
         : `peer-${Math.random().toString(36).substring(2, 7)}`
 
-    if (this.id === 'colliding-id' || this.id.startsWith('always-collide')) {
+    if (this.id.startsWith('reclaim-once') && !MockPeer.reclaimSeen.has(this.id)) {
+      MockPeer.reclaimSeen.add(this.id)
+      setTimeout(() => {
+        this.emit('error', Object.assign(new Error('ID taken'), { type: 'unavailable-id' }))
+      }, 5)
+    } else if (this.id === 'colliding-id' || this.id.startsWith('always-collide')) {
       setTimeout(() => {
         this.emit('error', Object.assign(new Error('ID taken'), { type: 'unavailable-id' }))
       }, 5)
@@ -795,5 +801,57 @@ describe("PeerJSTransport stranger matchmaking support", () => {
     expect(peer.reconnect).not.toHaveBeenCalled()
 
     host.disconnect()
+  })
+})
+
+describe('PeerJSTransport resume after reload', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('reclaims its previous id when the broker still holds it', async () => {
+    const host = new PeerJSTransport({
+      role: 'host',
+      localPlayerId: 'reclaim-once-p2pgames-tictactoe-K7M4QX',
+      reclaimLocalId: true,
+    })
+    const connecting = host.connect()
+    await vi.advanceTimersByTimeAsync(2000)
+    await expect(connecting).resolves.toBe('reclaim-once-p2pgames-tictactoe-K7M4QX')
+    host.disconnect()
+  })
+
+  it('guest redials the Host after the connection drops while auto-redial is on', async () => {
+    const guest = new PeerJSTransport({ role: 'guest', targetPeerId: 'host-xyz' })
+    const joins: string[] = []
+    guest.onPlayerJoin((id) => joins.push(id))
+    const connecting = guest.connect()
+    await vi.advanceTimersByTimeAsync(30)
+    await connecting
+    expect(guest.status).toBe('connected')
+
+    guest.setAutoRedial(true)
+    ;(guest as any).connection.emit('close')
+    expect(guest.status).toBe('disconnected')
+
+    await vi.advanceTimersByTimeAsync(3100)
+    expect(guest.status).toBe('connected')
+    expect(joins).toEqual(['host-xyz', 'host-xyz'])
+    guest.disconnect()
+  })
+
+  it('does not redial when auto-redial is off', async () => {
+    const guest = new PeerJSTransport({ role: 'guest', targetPeerId: 'host-xyz' })
+    const connecting = guest.connect()
+    await vi.advanceTimersByTimeAsync(30)
+    await connecting
+    ;(guest as any).connection.emit('close')
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(guest.status).toBe('disconnected')
+    guest.disconnect()
   })
 })

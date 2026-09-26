@@ -471,4 +471,48 @@ describe('TicTacToeMatchCoordinator', () => {
       expect(receivedReactions).toEqual(['🎉'])
     })
   })
+
+  describe('resume after reload', () => {
+    it('a reloaded Guest resumes the board and rejoins the Host', () => {
+      const { hostCoordinator, guestCoordinator, guestTransport } = setupCoordinators(3)
+      hostCoordinator.submitMove(4)
+      guestCoordinator.submitMove(0)
+
+      const snap = guestCoordinator.snapshot
+      const cached = {
+        matchId: guestCoordinator.matchId,
+        localPlayer: snap.localPlayer,
+        remotePlayer: snap.remotePlayer,
+        bestOf: snap.seriesState.bestOf,
+        seriesState: snap.seriesState,
+        currentRoundState: snap.currentRoundState,
+        currentRoundMoves: snap.currentRoundMoves,
+        roundRecords: snap.roundRecords,
+        turnSecondsRemaining: snap.turnSecondsRemaining,
+        isBetweenRounds: snap.isBetweenRounds,
+        status: 'active' as const,
+        updatedAt: Date.now(),
+      }
+
+      // Reload: the old page is gone
+      guestCoordinator.destroy()
+      guestTransport.disconnect()
+      expect(hostCoordinator.snapshot.isReconnecting).toBe(true)
+
+      const resumed = new TicTacToeMatchCoordinator(
+        TicTacToeMatchCoordinator.resumeOptions(cached, guestTransport)
+      )
+      expect(resumed.snapshot.isReconnecting).toBe(true)
+      expect(resumed.snapshot.currentRoundState.board[4]).toBe('X')
+      expect(resumed.snapshot.currentRoundState.board[0]).toBe('O')
+
+      guestTransport.connect()
+
+      expect(resumed.snapshot.isReconnecting).toBe(false)
+      expect(hostCoordinator.snapshot.isReconnecting).toBe(false)
+      expect(resumed.isMyTurn).toBe(false)
+      expect(hostCoordinator.submitMove(8)).toBe(true)
+      expect(resumed.snapshot.currentRoundState.board[8]).toBe('X')
+    })
+  })
 })

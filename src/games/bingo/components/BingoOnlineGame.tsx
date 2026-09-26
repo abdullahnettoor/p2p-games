@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { LobbyCoordinator } from '@/core/lobby/LobbyCoordinator'
 import { PeerJSTransport } from '@/core/transport/PeerJSTransport'
 import {
@@ -18,6 +18,8 @@ import { BingoStrangerSearchScreen } from './BingoStrangerSearchScreen'
 import { BingoMatchLobby } from './BingoMatchLobby'
 import { BingoMatchplay } from './BingoMatchplay'
 import { BingoMatchCoordinator } from '../state/BingoMatchCoordinator'
+import { createResumeTransport, isResumable } from '@/core/lobby/resume'
+import { ITransport } from '@/core/transport/types'
 import { PlayerRole } from '@/core/games/types'
 import { useOnlineEntryFlow } from '@/components/entry'
 import '../bingoTokens.css'
@@ -48,6 +50,30 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
   const [matchCoordinator, setMatchCoordinator] = useState<BingoMatchCoordinator | null>(null)
   const activeRef = useRef(true)
   const lobbyCoordinatorRef = useRef<LobbyCoordinator<BingoBoard> | null>(null)
+
+  // After a reload, a recent friend Match in the cache is resumed instead of
+  // showing the entry screens (ADR 0005).
+  const [resumeCache] = useState(() => {
+    const cached = BingoMatchCoordinator.getCachedMatch()
+    return isResumable(cached) ? cached : null
+  })
+  const resumeTransportRef = useRef<ITransport | null>(null)
+  const [isResuming, setIsResuming] = useState(resumeCache !== null)
+
+  useEffect(() => {
+    if (!resumeCache) return
+    const transport = createResumeTransport(resumeCache)
+    resumeTransportRef.current = transport
+    const match = new BingoMatchCoordinator(BingoMatchCoordinator.resumeOptions(resumeCache, transport))
+    setMatchCoordinator(match)
+    // If this fails, the reconnect grace runs out and the Match ends.
+    transport.connect().catch((err) => console.warn('[Bingo] resume connect failed:', err))
+    return () => {
+      match.destroy()
+      transport.disconnect()
+      resumeTransportRef.current = null
+    }
+  }, [resumeCache])
 
   const handleBackToChoiceRef = useRef<() => void>(() => {})
   const startStrangerSearchRef = useRef<() => void>(() => {})
@@ -159,9 +185,9 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
     handleBackToChoice,
   } = useOnlineEntryFlow<LobbyCoordinator<BingoBoard>>({
     gameId: 'bingo',
-    initialAction,
-    initialRoomCode,
-    initialMatchId,
+    initialAction: resumeCache ? null : initialAction,
+    initialRoomCode: resumeCache ? null : initialRoomCode,
+    initialMatchId: resumeCache ? null : initialMatchId,
     createFriendLobby,
     createStrangerLobby,
   })
@@ -178,10 +204,21 @@ export const BingoOnlineGame: React.FC<BingoOnlineGameProps> = ({
         onExit={() => {
           BingoMatchCoordinator.clearCachedMatch()
           matchCoordinator.destroy()
+          resumeTransportRef.current?.disconnect()
+          setIsResuming(false)
           setMatchCoordinator(null)
           handleBackToChoice()
         }}
       />
+    )
+  }
+
+  // Resuming after a reload: the coordinator is created in an effect
+  if (isResuming) {
+    return (
+      <div className="bingoTokenScope" role="status" data-testid="bingo-resuming">
+        Reconnecting to your match…
+      </div>
     )
   }
 
