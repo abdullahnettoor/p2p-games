@@ -1,0 +1,101 @@
+.tallyWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  user-select: none;
+}
+
+.tallyHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.tallyHeading {
+  font-family: var(--ttt-font-label);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ttt-ink-muted);
+}
+
+.targetBadge {
+  font-family: var(--ttt-font-label);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ttt-ink);
+  background-color: var(--ttt-cell-pressed);
+  border: 1px dashed var(--ttt-rule);
+  border-radius: 4px;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.columnsContainer {
+  display: flex;
+  justify-content: space-around;
+  width: 100%;
+  gap: 4px;
+}
+
+.playerColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.playerLabel {
+  font-family: var(--ttt-font-label);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.hostLabel {
+  color: var(--ttt-host-ink);
+}
+
+.guestLabel {
+  color: var(--ttt-guest-ink);
+}
+
+.marksList {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+}
+
+.emptyTally {
+  font-family: var(--ttt-font-label);
+  font-size: 0.75rem;
+  color: var(--ttt-ink-muted);
+  opacity: 0.4;
+}
+
+.tallySvg {
+  overflow: visible;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.06));
+}
+
+.tallyStroke {
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  fill: none;
+}
