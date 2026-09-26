@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { applyMove, checkWin, createEmptyBoard, initState, serializeBoard, validateMove } from './engine'
+import {
+  applyMove,
+  checkWin,
+  createEmptyBoard,
+  initState,
+  resetRoundFromHostMessage,
+  serializeBoard,
+  ticTacToeDefinition,
+  validateMove,
+} from './engine'
 import { TicTacToeState } from './types'
 
 const HOST = 'host-1'
@@ -87,5 +96,82 @@ describe('tic-tac-toe engine', () => {
   it('reports no winner on an in-progress board', () => {
     const outcome = checkWin(play(freshState(), 0, 4))
     expect(outcome.isGameOver).toBe(false)
+  })
+})
+
+describe('ticTacToeDefinition (GameDefinition implementation)', () => {
+  it('exposes definition metadata', () => {
+    expect(ticTacToeDefinition.id).toBe('tictactoe')
+    expect(ticTacToeDefinition.name).toBe('Tic-Tac-Toe')
+    expect(ticTacToeDefinition.minPlayers).toBe(2)
+    expect(ticTacToeDefinition.maxPlayers).toBe(2)
+  })
+
+  it('always validates null setup config as valid', () => {
+    expect(ticTacToeDefinition.validateSetup(null)).toEqual({ valid: true })
+  })
+
+  it('initializes round state with players and starting player', () => {
+    const state = ticTacToeDefinition.init({
+      players: [HOST, GUEST],
+      setupConfigs: { [HOST]: null, [GUEST]: null },
+      startingPlayerId: GUEST,
+    })
+
+    expect(state.board).toEqual(Array(9).fill(null))
+    expect(state.marks[HOST]).toBe('X')
+    expect(state.marks[GUEST]).toBe('O')
+    expect(state.activePlayerId).toBe(GUEST)
+    expect(state.status).toBe('active')
+  })
+
+  it('validates moves via validateMove', () => {
+    const state = ticTacToeDefinition.init({
+      players: [HOST, GUEST],
+      setupConfigs: { [HOST]: null, [GUEST]: null },
+      startingPlayerId: HOST,
+    })
+
+    expect(
+      ticTacToeDefinition.validateMove(state, { cellIndex: 0, playerId: HOST }, HOST).valid
+    ).toBe(true)
+    expect(
+      ticTacToeDefinition.validateMove(state, { cellIndex: 0, playerId: GUEST }, GUEST).valid
+    ).toBe(false)
+    expect(
+      ticTacToeDefinition.validateMove(state, { cellIndex: 0, playerId: HOST }, GUEST).valid
+    ).toBe(false)
+  })
+
+  it('applies moves and checks win conditions via GameDefinition methods', () => {
+    let state = ticTacToeDefinition.init({
+      players: [HOST, GUEST],
+      setupConfigs: { [HOST]: null, [GUEST]: null },
+      startingPlayerId: HOST,
+    })
+
+    state = ticTacToeDefinition.applyMove(state, { cellIndex: 0, playerId: HOST })
+    state = ticTacToeDefinition.applyMove(state, { cellIndex: 3, playerId: GUEST })
+    state = ticTacToeDefinition.applyMove(state, { cellIndex: 1, playerId: HOST })
+    state = ticTacToeDefinition.applyMove(state, { cellIndex: 4, playerId: GUEST })
+    state = ticTacToeDefinition.applyMove(state, { cellIndex: 2, playerId: HOST })
+
+    const outcome = ticTacToeDefinition.checkWin(state)
+    expect(outcome.isGameOver).toBe(true)
+    expect(outcome.winnerId).toBe(HOST)
+  })
+
+  it('resets new round deterministically from host payload', () => {
+    const payload = {
+      roundNumber: 2,
+      startingPlayerId: GUEST,
+      timestamp: 123456789,
+    }
+    const state = resetRoundFromHostMessage(payload, [HOST, GUEST])
+    expect(state.activePlayerId).toBe(GUEST)
+    expect(state.board).toEqual(Array(9).fill(null))
+    expect(state.marks[HOST]).toBe('X')
+    expect(state.marks[GUEST]).toBe('O')
+    expect(state.status).toBe('active')
   })
 })
